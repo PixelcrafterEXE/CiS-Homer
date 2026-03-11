@@ -1,0 +1,4 @@
+[submodule "Firmware"]
+	path = Firmware
+	url = git@github.com:PixelcrafterEXE/Homer-Firmware.git
+	branch = arm64
