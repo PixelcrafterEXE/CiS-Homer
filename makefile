@@ -14,7 +14,7 @@ run: $(VENV_DIR)/.installed  ## Run the software locally (creates / updates venv
 	$(PYTHON) $(SOFTWARE_DIR)/main.py
 
 build:  ## Build the Raspberry Pi OS firmware image
-	cd $(FIRMWARE_DIR) && sudo ./build.sh
+	cd $(FIRMWARE_DIR) && sudo ./build_docker.sh
 
 deps:  ## Sync installed venv packages → Software/pyproject.toml [project.dependencies]
 	@if [ ! -x "$(PYTHON)" ] || ! "$(PYTHON)" --version >/dev/null 2>&1; then \
@@ -59,5 +59,5 @@ $(VENV_DIR)/.installed: $(PYPROJECT)
 	@echo "-> Updating pip / setuptools / wheel ..."
 	@$(PIP) install --quiet --upgrade pip setuptools wheel
 	@echo "-> Installing project dependencies ..."
-	@$(PIP) install --editable --quiet "$(SOFTWARE_DIR)"
+	@$(PIP) install --quiet --editable "$(SOFTWARE_DIR)"
 	@touch $@
