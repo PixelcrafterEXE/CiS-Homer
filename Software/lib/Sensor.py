@@ -2,6 +2,7 @@ import serial
 from serial.tools import list_ports
 import re
 import time
+import threading
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -11,35 +12,64 @@ def listPorts():
     return [port for port in list_ports.comports()]
 
 class Sensor:
-    def __init__(self, port: str = "auto", baud: int = 115200):
+    def __init__(self, port: str = "auto", baud: int = 115200, device_id: str = "ALSKDJALSDKLKB"):
+        self.port = port
+        self.baud = baud
+        self.device_id = device_id
         
-        #serial port handeling:
         self.ser = None
-        if port == "auto":
-            # Search all ports; prefer likely USB serial devices.
-            port = None
-            for p in listPorts():
-                if p.hwid.startswith("USB VID:PID="):
-                    port = p.device
-                    break
-        if port is None:
-            raise RuntimeError("No compatible serial sensor found. Provide a port explicitly.")
 
-        try:
-            self.ser = serial.Serial(port, baud)
-            if not self.ser.is_open:
-                self.ser.open()
-        except (serial.SerialException, OSError):
-            self.ser = None
+        self._running = True
+        self._timer = None
+        self._pollSerial()
 
-    def __del__(self):   
+
+    def __del__(self):
+        self._running = False
+        if self._timer is not None:
+            self._timer.cancel()
+        
         #close serial connection if exists and open
-        ser = getattr(self, "ser", None)
-        if ser is not None and ser.is_open:
-            ser.close()
+        if self.ser is not None and self.ser.is_open:
+            self.ser.close()
+    
+    def _pollSerial(self):
+        '''runs scheduled to check for available devices if connection doesnt exist yet;'''
+        if not self._running:
+            return
+
+        if self.ser is None:
+            if self.port == "auto":
+                ports = listPorts()
+            else: 
+                ports = [self.port]
+            for port in ports:
+                if self.device_id and self.device_id not in str(port.hwid):
+                    continue
+                try:
+                    ser = serial.Serial(port.device, self.baud, timeout=1)
+                    ser.write(b"r")
+                    ser.flush()
+                    time.sleep(0.1)
+                    if ser.in_waiting > 0:
+                        self.ser = ser
+                        print(f"Connected to sensor on {port.device}")
+                        break
+                    else:
+                        ser.close()
+                except (serial.SerialException, OSError) as e:
+                    print(f"Failed to connect to {port.device}: {e}")
+        elif not self.ser.is_open:
+            self.ser = None
+        #todo: disconnect detection, timeout, etc. to set self.ser = None if connection is lost
+        
+        #rerun after 100ms
+        if self._running:
+            self._timer = threading.Timer(0.1, self._pollSerial)
+            self._timer.start()
     
     def getRaw(self):
-        ser = getattr(self, "ser", None)
+        ser = self.ser
         if ser is None or not ser.is_open:
             raise RuntimeError("Serial connection is not open.")
 
@@ -52,10 +82,6 @@ class Sensor:
         pattern = re.compile(r"(\d+)\s*:\s*(\d+)")
         values = {}
         remainder = ""
-
-        old_timeout = ser.timeout
-        if old_timeout is None:
-            ser.timeout = 1.0
 
         try:
             deadline = time.monotonic() + 3.0
@@ -82,8 +108,8 @@ class Sensor:
                 raise ValueError(f"Incomplete sensor frame, missing channels: {missing}")
 
             return np.array([values[i] for i in range(1, 65)], dtype=np.uint16)
-        finally:
-            ser.timeout = old_timeout
+        except Exception as e:
+            raise RuntimeError(f"Failed to read sensor data: {e}")
 
     def getMap(self):
         pass
