@@ -1,6 +1,20 @@
 VENV_DIR     := Software/venv
+
+ifeq ($(OS),Windows_NT)
+PYTHON       := $(VENV_DIR)/Scripts/python.exe
+PIP          := $(VENV_DIR)/Scripts/pip.exe
+RM_DIR       := rmdir /s /q
+VENV_PATH_CL := Software\venv
+BUILD_PATH_CL:= Firmware\build
+BUILD_CMD    := wsl bash -c "cd Firmware && sudo ./build-docker.sh"
+else
 PYTHON       := $(VENV_DIR)/bin/python3
 PIP          := $(VENV_DIR)/bin/pip
+RM_DIR       := rm -rf
+VENV_PATH_CL := $(VENV_DIR)
+BUILD_PATH_CL:= Firmware/build
+BUILD_CMD    := cd Firmware && sudo ./build-docker.sh
+endif
 
 .PHONY: all run build deps clean help
 
@@ -9,8 +23,8 @@ all: help
 run: $(VENV_DIR)/.installed  ## Run the software locally (creates / updates venv as needed)
 	$(PYTHON) Software/main.py
 
-build:  ## Build the Raspberry Pi OS firmware image
-	cd Firmware && sudo ./build-docker.sh 
+build:  clean ## Build the Raspberry Pi OS firmware image
+	@$(BUILD_CMD)
 
 deps:  ## Sync installed venv packages → Software/pyproject.toml [project.dependencies]
 	@if [ ! -x "$(PYTHON)" ] || ! "$(PYTHON)" --version >/dev/null 2>&1; then \
@@ -36,9 +50,8 @@ open('Software/pyproject.toml', 'w').write(new); \
 print('Updated Software/pyproject.toml with {} package(s).'.format(len(items)))"
 
 clean:  ## Remove the virtual environment
-	rm -rf $(VENV_DIR)
-	rm -rf Firmware/build
-	docker rm -v pigen_work || true
+	-$(RM_DIR) $(VENV_PATH_CL) 2> /dev/null || true
+	-$(RM_DIR) $(BUILD_PATH_CL) 2> /dev/null || true
 
 help:  ## Show this help message
 	@echo "Usage: make <target>"
