@@ -4,7 +4,7 @@ from typing import Callable, Sequence
 import ttkbootstrap as tkk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from Software.lib.Sensor import Sensor
+from lib.Sensor import Sensor
 
 
 class Option(tkk.Frame):
@@ -76,32 +76,50 @@ class OptionDropdown(Option):
 class UI(tkk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self._sensor = Sensor()
+        self.protocol("WM_DELETE_WINDOW", self._on_closing)
+        self._sensor: Sensor | None = None
+        try:
+            self._sensor = Sensor()
+        except RuntimeError:
+            pass
         self.buildUI()
+
+    def _on_closing(self) -> None:
+        if self._sensor is not None:
+            self._sensor.stop()
+        self.destroy()
 
     def buildUI(self) -> None:
         self.title("CiS HomeRPI")
         #self.attributes("-fullscreen", True)
-        # todo: disable alt+tab, alt+f4, ctrl+alt+del, etc. to prevent user from exiting the app or switching to another app
+        #todo: disable alt+tab, alt+f4, ctrl+alt+del, etc. to prevent user from exiting the app or switching to another app
 
         # Container roots for left and right panels 
         self._main = tkk.Frame(self)
         self._main.pack(fill="both", expand=True)
-        self._main.columnconfigure(0, weight=3)
-        self._main.columnconfigure(1, weight=2)
+        self._main.columnconfigure(0, weight=4, uniform="group1")
+        self._main.columnconfigure(1, weight=3, uniform="group1")
         self._main.rowconfigure(0, weight=1)
 
         self._build_left_panel()
         self._build_right_panel()
 
     def _build_left_panel(self) -> None:
-        self._left_panel = tkk.Frame(self._main, padding=10)
-        self._left_panel.grid(row=0, column=0, sticky="nsew")
+        #todo: auto-rerun every few hundered ms
+        if self._sensor is None:
+            self._left_panel = tkk.Frame(self._main, padding=10)
+            self._left_panel.grid(row=0, column=0, sticky="nsew")
 
-        figure = self._sensor.plotMesh()
-        canvas = FigureCanvasTkAgg(figure, master=self._left_panel)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill="both", expand=True)
+            error_label = tkk.Label(self._left_panel, text="No sensor detected", foreground="red")
+            error_label.pack(expand=True)
+        else:
+            self._left_panel = tkk.Frame(self._main, padding=10)
+            self._left_panel.grid(row=0, column=0, sticky="nsew")
+
+            figure = self._sensor.plotMesh()
+            canvas = FigureCanvasTkAgg(figure, master=self._left_panel)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="both", expand=True)
 
     def _build_right_panel(self) -> None:
         self._right_panel = tkk.Frame(self._main, padding=(0, 10, 10, 10))

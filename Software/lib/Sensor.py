@@ -24,7 +24,7 @@ class Sensor:
         self._pollSerial()
 
 
-    def __del__(self):
+    def stop(self):
         self._running = False
         if self._timer is not None:
             self._timer.cancel()
@@ -32,6 +32,9 @@ class Sensor:
         #close serial connection if exists and open
         if self.ser is not None and self.ser.is_open:
             self.ser.close()
+
+    def __del__(self):
+        self.stop()
     
     def _pollSerial(self):
         '''runs scheduled to check for available devices if connection doesnt exist yet;'''
