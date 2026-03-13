@@ -17,20 +17,20 @@ This repository contains the source code, documentation, and build tools for the
 
 ## Setup & Installation
 
-### 0A (Linux). Install Requirements
+### 0.A (Linux): Install Requirements
 Ensure the following are installed on your system:
 * **Python**
 * **Git**
 * **GNU Make**
 
-### 0B (Windows). Setup WSL and Requirements
+### 0.B (Windows): Setup WSL and Requirements
 Install WSL by running
 '''wsl --install -d Ubuntu'''
 install Git, GNU Make, Python (for running locally):
 '''winget install -e --id Python.Python.3.9;winget install -e --id Git.Git;winget install -e --id GnuWin32.Make'''
 Install Dependencies inside WSL:
 '''sudo apt update
-sudo apt install make python3-venv python3-pip python3-venv quilt parted qemu-user-binfmt debootstrap zerofree dosfstools libarchive-tools xxd file git kmod arch-test bc pigz -y'''
+sudo apt install make python3-venv python3-pip python3 quilt parted qemu-user-binfmt debootstrap zerofree dosfstools libarchive-tools xxd file git kmod arch-test bc pigz -y'''
 
 ### 1. Clone the Repository
 Clone the repository including all submodules:
