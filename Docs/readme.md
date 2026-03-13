@@ -35,7 +35,7 @@ sudo apt install make python3-venv python3-pip python3-venv quilt parted qemu-us
 ### 1. Clone the Repository
 Clone the repository including all submodules:
 ```bash
-git clone --recurse-submodules [github.com/PixelcrafterEXE/CiS-HomerPi.git](https://github.com/PixelcrafterEXE/CiS-HomerPi.git)
+git clone --recurse-submodules https://github.com/PixelcrafterEXE/CiS-Homer.git
 ```
 ### 2. Run Software Locally
 To run the Software locally, execute:
