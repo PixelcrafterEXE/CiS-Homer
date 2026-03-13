@@ -1,5 +1,9 @@
+from lib.UI import UI
+
+
 def main():
-    print("Hello, World!")
+    ui = UI()
+    ui.mainloop()
 
 if __name__ == "__main__":
     main()
