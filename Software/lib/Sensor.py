@@ -23,6 +23,14 @@ class Sensor:
         self._timer = None
         self._pollSerial()
 
+    def setBaud(self, baud: int):
+        self.baud = baud
+    
+    def setPort(self, port: str):
+        self.port = port
+    
+    def setDeviceID(self, device_id: str):
+        self.device_id = device_id
 
     def stop(self):
         self._running = False

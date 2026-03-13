@@ -4,6 +4,7 @@ from typing import Callable, Sequence
 import ttkbootstrap as tkk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+import lib.Sensor as Serial
 from lib.Sensor import Sensor
 
 
@@ -15,6 +16,8 @@ class Option(tkk.Frame):
 
     def add_to(self, parent) -> None:
         self.pack(in_=parent, fill="x", padx=8, pady=5)
+
+#todo: implement persistency
 
 
 class OptionButton(Option):
@@ -42,7 +45,7 @@ class OptionToggle(Option):
             if command:
                 command(self.value.get())
 
-        toggle = tkk.Checkbutton(self, variable=self.value, command=_on_toggle, bootstyle="switch")
+        toggle = tkk.Checkbutton(self, variable=self.value, command=_on_toggle, bootstyle="round-toggle")
         toggle.grid(row=0, column=1, sticky="e")
 
 
@@ -105,7 +108,7 @@ class UI(tkk.Tk):
         self._build_right_panel()
 
     def _build_left_panel(self) -> None:
-        #todo: auto-rerun every few hundered ms
+        #todo: auto-refresh every few hundered ms
         if self._sensor is None:
             self._left_panel = tkk.Frame(self._main, padding=10)
             self._left_panel.grid(row=0, column=0, sticky="nsew")
@@ -127,29 +130,36 @@ class UI(tkk.Tk):
         self._right_panel.rowconfigure(0, weight=1)
         self._right_panel.columnconfigure(0, weight=1)
 
-        self._options_canvas = tk.Canvas(self._right_panel, highlightthickness=0)
-        self._options_canvas.grid(row=0, column=0, sticky="nsew")
-
-        scrollbar = tkk.Scrollbar(self._right_panel, orient="vertical", command=self._options_canvas.yview)
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        self._options_canvas.configure(yscrollcommand=scrollbar.set)
-
-        self._options_container = tkk.Frame(self._options_canvas)
-        window_id = self._options_canvas.create_window((0, 0), window=self._options_container, anchor="nw")
-
-        self._options_container.bind(
-            "<Configure>",
-            lambda _event: self._options_canvas.configure(scrollregion=self._options_canvas.bbox("all")),
-        )
-        self._options_canvas.bind(
-            "<Configure>",
-            lambda event: self._options_canvas.itemconfigure(window_id, width=event.width),
-        )
+        from ttkbootstrap.scrolled import ScrolledFrame
+        self._options_container = ScrolledFrame(self._right_panel, autohide=True, bootstyle="round")
+        self._options_container.grid(row=0, column=0, sticky="nsew")
 
         self._options: list[Option] = []
-        self._add_option(OptionButton(self._options_container, "Start Measurement"))
-        self._add_option(OptionToggle(self._options_container, "Auto Save", initial=True))
-        self._add_option(OptionDropdown(self._options_container, "Sample Rate", ["1 Hz", "5 Hz", "10 Hz"], "5 Hz"))
+
+        
+        self._add_option(
+            OptionDropdown(
+                self._options_container,
+                "Serieller Port",
+                ["auto"] + [port.device for port in Serial.listPorts()],
+                "auto",
+                command=lambda port: self._sensor.setPort(port) if self._sensor else None
+            )
+        )
+        self._add_option(
+            OptionDropdown(
+                self._options_container,
+                "Baud-Rate", 
+                ["9600", "19200", "38400", "57600", "115200"],
+                "115200",
+                command=lambda baud: self._sensor.setBaud(int(baud)) if self._sensor else None
+            )
+        )
+
+        
+        self._add_option(OptionToggle(self._options_container, "Messdaten Streamen", initial=True))
+        for _ in range(5): self._add_option(OptionButton(self._options_container, "Messen"))
+
 
     def _add_option(self, option: Option) -> None:
         self._options.append(option)
