@@ -4,7 +4,7 @@ This repository contains the source code, documentation, and build tools for the
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 | Directory | Description |
 | :--- | :--- |
@@ -15,14 +15,22 @@ This repository contains the source code, documentation, and build tools for the
 
 ---
 
-## 🛠 Setup & Installation
+## Setup & Installation
 
-### 0. Build Requirements
+### 0A (Linux). Install Requirements
 Ensure the following are installed on your system:
 * **Python**
 * **Git**
 * **GNU Make**
-* **Docker** (for building the firmware image)
+
+### 0B (Windows). Setup WSL and Requirements
+Install WSL by running
+'''wsl --install -d Ubuntu'''
+install Git, GNU Make, Python (for running locally):
+'''winget install -e --id Python.Python.3.9;winget install -e --id Git.Git;winget install -e --id GnuWin32.Make'''
+Install Dependencies inside WSL:
+'''sudo apt update
+sudo apt install make python3-venv python3-pip python3-venv quilt parted qemu-user-binfmt debootstrap zerofree dosfstools libarchive-tools xxd file git kmod arch-test -y'''
 
 ### 1. Clone the Repository
 Clone the repository including all submodules:
