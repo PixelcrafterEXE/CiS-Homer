@@ -40,7 +40,7 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: "HomerPI Release ${{ env.RELEASE_TAG }}"
-          files: Firmware/Deploy/image_*-homerpi-homer.img.xz
+          files: Firmware/deploy/image_*-homerpi-homer.img.xz
           draft: false
           prerelease: false
           generate_release_notes: true
