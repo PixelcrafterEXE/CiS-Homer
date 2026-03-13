@@ -1,0 +1,43 @@
+name: Build and Release System Image
+
+on:
+  push:
+    branches:
+      - Release
+
+jobs:
+  build-and-release:
+    # GitHub natively supports ARM64 runners for public repositories using the `ubuntu-24.04-arm` or `ubuntu-22.04-arm` label.
+    # If the repository is private without access to GitHub-hosted ARM runners, change this to `ubuntu-latest`.
+    runs-on: ubuntu-24.04-arm
+    
+    permissions:
+      contents: write # Required to publish a GitHub Release
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make python3 python3-pip python3-venv quilt parted qemu-user-binfmt debootstrap zerofree dosfstools libarchive-tools xxd file git kmod arch-test bc pigz
+
+      - name: Build Image
+        run: make build
+
+      - name: Generate Release Tag
+        id: create_tag
+        run: |
+          # Generate a unique tag based on the current date and time
+          echo "RELEASE_TAG=$(date +'%Y-%m-%d-%H%M%S')" >> $GITHUB_ENV
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: "HomerPI Release ${{ env.RELEASE_TAG }}"
+          files: Firmware/Deploy/image_*-homerpi-homer.img.xz
+          draft: false
+          prerelease: false
+          generate_release_notes: true
