@@ -12,7 +12,7 @@ def listPorts():
     return [port for port in list_ports.comports()]
 
 class Sensor:
-    def __init__(self, port: str = "auto", baud: int = 115200, device_id: str = "ALSKDJALSDKLKB"):
+    def __init__(self, port: str = "auto", baud: int = 115200, device_id: str = "0403:6015"):
         self.port = port
         self.baud = baud
         self.device_id = device_id
@@ -23,14 +23,27 @@ class Sensor:
         self._timer = None
         self._pollSerial()
 
+    def _reconnect(self):
+        if self.ser is not None:
+            if self.ser.is_open:
+                self.ser.close()
+            self.ser = None
+
     def setBaud(self, baud: int):
-        self.baud = baud
+        print(f"Setting baud rate to {baud}...")
+        if self.baud != baud:
+            self.baud = baud
+            self._reconnect()
     
     def setPort(self, port: str):
-        self.port = port
+        if self.port != port:
+            self.port = port
+            self._reconnect()
     
     def setDeviceID(self, device_id: str):
-        self.device_id = device_id
+        if self.device_id != device_id:
+            self.device_id = device_id
+            self._reconnect()
 
     def stop(self):
         self._running = False
@@ -50,26 +63,30 @@ class Sensor:
             return
 
         if self.ser is None:
+            print("Attempting to (re-)connect to sensor...")
             if self.port == "auto":
                 ports = listPorts()
             else: 
                 ports = [self.port]
-            for port in ports:
-                if self.device_id and self.device_id not in str(port.hwid):
+            for port_info in ports:
+                device = port_info.device if hasattr(port_info, 'device') else port_info
+                hwid = port_info.hwid if hasattr(port_info, 'hwid') else self.device_id
+
+                if self.device_id and self.device_id not in str(hwid):
                     continue
                 try:
-                    ser = serial.Serial(port.device, self.baud, timeout=1)
+                    ser = serial.Serial(device, self.baud, timeout=1)
                     ser.write(b"r")
                     ser.flush()
                     time.sleep(0.1)
                     if ser.in_waiting > 0:
                         self.ser = ser
-                        print(f"Connected to sensor on {port.device}")
+                        print(f"Connected to sensor on {device}")
                         break
                     else:
                         ser.close()
                 except (serial.SerialException, OSError) as e:
-                    print(f"Failed to connect to {port.device}: {e}")
+                    print(f"Failed to connect to {device}: {e}")
         elif not self.ser.is_open:
             self.ser = None
         #todo: disconnect detection, timeout, etc. to set self.ser = None if connection is lost
