@@ -90,6 +90,7 @@ class UI(tkk.Tk):
     def _on_closing(self) -> None:
         if self._sensor is not None:
             self._sensor.stop()
+        self.quit()
         self.destroy()
 
     def buildUI(self) -> None:
@@ -119,7 +120,7 @@ class UI(tkk.Tk):
             self._left_panel = tkk.Frame(self._main, padding=10)
             self._left_panel.grid(row=0, column=0, sticky="nsew")
 
-            figure = self._sensor.plotMesh()
+            figure = self._sensor.plotRaster()
             canvas = FigureCanvasTkAgg(figure, master=self._left_panel)
             canvas.draw()
             canvas.get_tk_widget().pack(fill="both", expand=True)
@@ -141,7 +142,7 @@ class UI(tkk.Tk):
             OptionDropdown(
                 self._options_container,
                 "Serieller Port",
-                ["auto"] + [port.device for port in Serial.listPorts()],
+                ["auto"] + [port.device for port in Serial.listPorts()], #todo: show device name
                 "auto",
                 command=lambda port: self._sensor.setPort(port) if self._sensor else None
             )
@@ -158,7 +159,17 @@ class UI(tkk.Tk):
 
         
         self._add_option(OptionToggle(self._options_container, "Messdaten Streamen", initial=True))
-        for _ in range(5): self._add_option(OptionButton(self._options_container, "Messen"))
+
+        self._add_option(
+            OptionButton(
+                self._options_container, 
+                "Messen", 
+                command=lambda: (
+                    self._build_left_panel(), 
+                    print(self._sensor.getMap())
+                )
+            )
+        )
 
 
     def _add_option(self, option: Option) -> None:
