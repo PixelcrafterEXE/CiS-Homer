@@ -209,7 +209,7 @@ class Sensor:
             raise RuntimeError(f"Failed to read sensor data: {e}")
 
     def getMap(self):
-        '''returns the latest sensor frame mapped to a 9x9 grid'''
+        '''returns the latest sensor frame mapped to a 9x9 grid.'''
         raw = self.getRaw()
         array = np.full((9, 9), np.nan)
         for i, pos in enumerate(positions):
@@ -218,11 +218,101 @@ class Sensor:
         return array
 
 
-    def plotRaster(self):
-        pass
+    def plotRaster(self, autoRange=False, logRange=True):
+        import matplotlib.pyplot as plt
+        import matplotlib.colors as mcolors
+        from matplotlib.collections import LineCollection
+        import numpy as np
+
+        data = self.getMap().astype(float)
+        rows, cols = data.shape
+        nan_mask = np.isnan(data)
+        valid_vals = data[~nan_mask]
+
+        lo = float(valid_vals.min()) if autoRange and len(valid_vals) else (1.0 if logRange else 0.0)
+        hi = float(valid_vals.max()) if autoRange and len(valid_vals) else 65535.0
+
+        def make_cmap(lo, hi):
+            if logRange:
+                log_rng = np.log10(65535) - np.log10(1)
+                lo_n = (np.log10(max(lo, 1)) - np.log10(1)) / log_rng
+                hi_n = (np.log10(max(hi, 1)) - np.log10(1)) / log_rng
+            else:
+                lo_n, hi_n = lo / 65535.0, hi / 65535.0
+            lo_n = float(np.clip(lo_n, 0.0, 1.0))
+            hi_n = float(np.clip(hi_n, lo_n + 1e-6, 1.0))
+            cmap = mcolors.LinearSegmentedColormap.from_list(
+                'raster', [(0.0, 'black'), (lo_n, 'black'), (hi_n, 'white'), (1.0, 'white')]
+            )
+            cmap.set_bad('none')
+            return cmap
+
+        norm = mcolors.LogNorm(vmin=1, vmax=65535) if logRange else mcolors.Normalize(vmin=0, vmax=65535)
+
+        fig, (ax, cax) = plt.subplots(1, 2, figsize=(8, 6), gridspec_kw={'width_ratios': [8, 1]})
+        fig.subplots_adjust(wspace=0.05)
+
+        im = ax.imshow(data, cmap=make_cmap(lo, hi), norm=norm, interpolation='nearest', aspect='equal')
+        ax.set_xticks([]); ax.set_yticks([])
+
+        # Grid lines via LineCollection (draw edge if at least one adjacent pixel is valid)
+        def ok(i, j):
+            return 0 <= i < rows and 0 <= j < cols and not nan_mask[i, j]
+
+        segs = (
+            [[(j-.5, i-.5), (j+.5, i-.5)] for i in range(rows+1) for j in range(cols) if ok(i-1,j) or ok(i,j)] +
+            [[(j-.5, i-.5), (j-.5, i+.5)] for j in range(cols+1) for i in range(rows) if ok(i,j-1) or ok(i,j)]
+        )
+        if segs:
+            ax.add_collection(LineCollection(segs, colors='black', lw=0.5))
+
+        fig.colorbar(im, cax=cax)
+
+        if not autoRange:
+            state = {'drag': None, 'lo': lo, 'hi': hi}
+            lo_line = cax.axhline(lo, color='cyan', lw=1.5)
+            hi_line = cax.axhline(hi, color='cyan', lw=1.5)
+            vmin_cb = 1 if logRange else 0
+
+            def on_press(event):
+                if event.inaxes != cax or event.ydata is None: return
+                y = event.ydata
+                state['drag'] = 'lo' if abs(y - state['lo']) <= abs(y - state['hi']) else 'hi'
+
+            def on_motion(event):
+                if not state['drag'] or event.inaxes != cax or event.ydata is None: return
+                y = float(np.clip(event.ydata, vmin_cb, 65535))
+                if state['drag'] == 'lo':
+                    state['lo'] = min(y, state['hi'] * 0.999 if logRange else state['hi'] - 1)
+                    lo_line.set_ydata([state['lo']] * 2)
+                else:
+                    state['hi'] = max(y, state['lo'] * 1.001 if logRange else state['lo'] + 1)
+                    hi_line.set_ydata([state['hi']] * 2)
+                im.set_cmap(make_cmap(state['lo'], state['hi']))
+                fig.canvas.draw_idle()
+
+            def on_release(event): state['drag'] = None
+
+            fig.canvas.mpl_connect('button_press_event', on_press)
+            fig.canvas.mpl_connect('motion_notify_event', on_motion)
+            fig.canvas.mpl_connect('button_release_event', on_release)
+
+        return fig
+    
 
     def plotBar(self):
-        pass
+        import matplotlib.pyplot as plt
+        data = self.getRaw()
+        fig, ax = plt.subplots(figsize=(10, 5))
+        
+        indices = np.arange(1, 65)
+        ax.bar(indices, data)
+        ax.set_xlabel("Channel Index")
+        ax.set_ylabel("Value")
+        ax.set_title("Channel Values")
+        ax.set_xlim(0, 65)
+        
+        return fig
 
     def plotTable(self):
         pass
