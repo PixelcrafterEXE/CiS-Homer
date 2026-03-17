@@ -7,6 +7,74 @@ import threading
 import numpy as np
 from matplotlib.figure import Figure
 
+positions = [
+    (2, 0),   # 1
+    (2, -1),  # 2
+    (1, -4),  # 3
+    (0, 3),   # 4
+    (-1, -1), # 5
+    (-2, -3), # 6
+    (-4, -1), # 7
+    None,     # 8 (NTC)
+    (2, 1),   # 9
+    (3, -1),  # 10
+    (1, -3),  # 11
+    (0, 2),   # 12
+    (-1, 0),  # 13
+    (-3, -3), # 14
+    (-4, 0),  # 15
+    (-3, 2),  # 16
+    (2, 2),   # 17
+    (1, 0),   # 18
+    (-1, -2), # 19
+    (0, 4),   # 20
+    (-1, 1),  # 21
+    (-3, -2), # 22
+    (-4, 1),  # 23
+    (-2, 2),  # 24
+    (2, 3),   # 25
+    (1, 1),   # 26
+    (0, -2),  # 27
+    (-1, 4),  # 28
+    (0, 0),   # 29
+    (-3, -1), # 30
+    (-3, 0),  # 31
+    (-3, 3),  # 32
+    None,     # 33 (NTC)
+    (4, 0),   # 34
+    (3, -3),  # 35
+    (1, 2),   # 36
+    (0, -1),  # 37
+    (-1, -4), # 38
+    (-2, -2), # 39
+    (-2, 1),  # 40
+    (4, 1),   # 41
+    (4, -1),  # 42
+    (2, -3),  # 43
+    (1, 3),   # 44
+    (1, -2),  # 45
+    (-1, -3), # 46
+    (-2, -1), # 47
+    (-1, 3),  # 48
+    (3, 3),   # 49
+    (3, 1),   # 50
+    (3, -2),  # 51
+    None,     # 52 (Refference Diode)
+    (1, -1),  # 53
+    (0, -4),  # 54
+    (-2, 0),  # 55
+    (-1, 2),  # 56
+    (3, 2),   # 57
+    (3, 0),   # 58
+    (2, -2),  # 59
+    (1, 4),   # 60
+    (0, 1),   # 61
+    (0, -3),  # 62
+    (-3, 1),  # 63
+    (-2, 3)   # 64
+]
+
+
 def listPorts():
     '''gets all serial ports with attached devices'''
     return [port for port in list_ports.comports()]
@@ -97,6 +165,7 @@ class Sensor:
             self._timer.start()
     
     def getRaw(self):
+        '''requests one raw frame of sensor data and returns it as a numpy array of shape (64,) with dtype uint16.'''
         ser = self.ser
         if ser is None or not ser.is_open:
             raise RuntimeError("Serial connection is not open.")
@@ -140,10 +209,16 @@ class Sensor:
             raise RuntimeError(f"Failed to read sensor data: {e}")
 
     def getMap(self):
-        pass
+        '''returns the latest sensor frame mapped to a 9x9 grid'''
+        raw = self.getRaw()
+        array = np.full((9, 9), np.nan)
+        for i, pos in enumerate(positions):
+            if pos is not None:
+                array[pos[0] + 4, pos[1] + 4] = raw[i]
+        return array
 
 
-    def plotMesh(self):
+    def plotRaster(self):
         pass
 
     def plotBar(self):
