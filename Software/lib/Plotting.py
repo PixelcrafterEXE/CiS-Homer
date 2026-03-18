@@ -1,0 +1,115 @@
+import numpy as np
+from matplotlib.figure import Figure
+import matplotlib.colors as mcolors
+from matplotlib.collections import LineCollection
+
+class RasterFigure(Figure):
+    def __init__(self, data: np.ndarray, autoRange: bool = False, logRange: bool = True, *args, **kwargs):
+        kwargs.setdefault('figsize', (8, 6))
+        super().__init__(*args, **kwargs)
+        
+        self.subplots_adjust(wspace=0.05)
+        ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [8, 1]})
+        
+        data = data.astype(float)
+        rows, cols = data.shape
+        nan_mask = np.isnan(data)
+        valid_vals = data[~nan_mask]
+
+        lo = float(valid_vals.min()) if autoRange and len(valid_vals) else (1.0 if logRange else 0.0)
+        hi = float(valid_vals.max()) if autoRange and len(valid_vals) else 65535.0
+
+        def make_cmap(lo, hi):
+            if logRange:
+                log_rng = np.log10(65535) - np.log10(1)
+                lo_n = (np.log10(max(lo, 1)) - np.log10(1)) / log_rng
+                hi_n = (np.log10(max(hi, 1)) - np.log10(1)) / log_rng
+            else:
+                lo_n, hi_n = lo / 65535.0, hi / 65535.0
+            lo_n = float(np.clip(lo_n, 0.0, 1.0))
+            hi_n = float(np.clip(hi_n, lo_n + 1e-6, 1.0))
+            cmap = mcolors.LinearSegmentedColormap.from_list(
+                'raster', [(0.0, 'black'), (lo_n, 'black'), (hi_n, 'white'), (1.0, 'white')]
+            )
+            cmap.set_bad('none')
+            return cmap
+
+        norm = mcolors.LogNorm(vmin=1, vmax=65535) if logRange else mcolors.Normalize(vmin=0, vmax=65535)
+
+        self.im = ax.imshow(data, cmap=make_cmap(lo, hi), norm=norm, interpolation='nearest', aspect='equal')
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        def ok(i, j):
+            return 0 <= i < rows and 0 <= j < cols and not nan_mask[i, j]
+
+        segs = (
+            [[(j-.5, i-.5), (j+.5, i-.5)] for i in range(rows+1) for j in range(cols) if ok(i-1,j) or ok(i,j)] +
+            [[(j-.5, i-.5), (j-.5, i+.5)] for j in range(cols+1) for i in range(rows) if ok(i,j-1) or ok(i,j)]
+        )
+        if segs:
+            ax.add_collection(LineCollection(segs, colors='black', lw=0.5))
+
+        self.colorbar(self.im, cax=cax)
+
+        if not autoRange:
+            self.state = {'drag': None, 'lo': lo, 'hi': hi}
+            self.lo_line = cax.axhline(lo, color='cyan', lw=1.5)
+            self.hi_line = cax.axhline(hi, color='cyan', lw=1.5)
+            self.vmin_cb = 1 if logRange else 0
+
+            def on_press(event):
+                if event.inaxes != cax or event.ydata is None: return
+                y = event.ydata
+                self.state['drag'] = 'lo' if abs(y - self.state['lo']) <= abs(y - self.state['hi']) else 'hi'
+
+            def on_motion(event):
+                if not self.state['drag'] or event.inaxes != cax or event.ydata is None: return
+                y = float(np.clip(event.ydata, self.vmin_cb, 65535))
+                if self.state['drag'] == 'lo':
+                    self.state['lo'] = min(y, self.state['hi'] * 0.999 if logRange else self.state['hi'] - 1)
+                    self.lo_line.set_ydata([self.state['lo']] * 2)
+                else:
+                    self.state['hi'] = max(y, self.state['lo'] * 1.001 if logRange else self.state['lo'] + 1)
+                    self.hi_line.set_ydata([self.state['hi']] * 2)
+                self.im.set_cmap(make_cmap(self.state['lo'], self.state['hi']))
+                self.canvas.draw_idle()
+
+            def on_release(event): 
+                self.state['drag'] = None
+
+            # We must assign these later or when the figure is added to a canvas.
+            self._on_press = on_press
+            self._on_motion = on_motion
+            self._on_release = on_release
+
+            # For safety: hook up events when figure gets a canvas
+            def connect_events(fig):
+                if fig.canvas:
+                    if not hasattr(fig.canvas, 'figure'):
+                        fig.canvas.figure = fig
+                    fig.canvas.mpl_connect('button_press_event', fig._on_press)
+                    fig.canvas.mpl_connect('motion_notify_event', fig._on_motion)
+                    fig.canvas.mpl_connect('button_release_event', fig._on_release)
+            
+            # Store connect function temporarily.
+            self._connect_events = connect_events
+
+    def set_canvas(self, canvas):
+        super().set_canvas(canvas)
+        if hasattr(self, '_connect_events'):
+            self._connect_events(self)
+
+
+class BarFigure(Figure):
+    def __init__(self, data: np.ndarray, *args, **kwargs):
+        kwargs.setdefault('figsize', (10, 5))
+        super().__init__(*args, **kwargs)
+        
+        ax = self.add_subplot(111)
+        indices = np.arange(1, 65)
+        ax.bar(indices, data)
+        ax.set_xlabel("Channel Index")
+        ax.set_ylabel("Value")
+        ax.set_title("Channel Values")
+        ax.set_xlim(0, 65)

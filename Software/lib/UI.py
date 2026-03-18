@@ -6,23 +6,39 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 import lib.Sensor as Serial
 from lib.Sensor import Sensor
+from lib.Plotting import RasterFigure
 
 
 class Option(tkk.Frame):
-    def __init__(self, parent, label: str | None = None) -> None:
+    def __init__(self, parent, label: str | None = None, visibility: Callable[[], bool] | None = None) -> None:
         super().__init__(parent, padding=10)
         self.columnconfigure(0, weight=1)
         self._label = label
+        self._visibility = visibility
+        self._parent_container = None
+        self._is_visible = False
 
     def add_to(self, parent) -> None:
-        self.pack(in_=parent, fill="x", padx=8, pady=5)
+        self._parent_container = parent
+        self._is_visible = self._visibility() if self._visibility else True
+        if self._is_visible:
+            self.pack(in_=parent, fill="x", padx=8, pady=5)
+
+    def check_visibility_change(self) -> bool:
+        if not self._visibility:
+            return False
+        new_visible = self._visibility()
+        if new_visible != self._is_visible:
+            self._is_visible = new_visible
+            return True
+        return False
 
 #todo: implement persistency
 
 
 class OptionButton(Option):
-    def __init__(self, parent, text: str, command: Callable | None = None) -> None:
-        super().__init__(parent)
+    def __init__(self, parent, text: str, command: Callable | None = None, visibility: Callable[[], bool] | None = None) -> None:
+        super().__init__(parent, visibility=visibility)
         button = tkk.Button(self, text=text, command=command, bootstyle="primary")
         button.grid(row=0, column=0, sticky="ew")
 
@@ -34,8 +50,9 @@ class OptionToggle(Option):
         label: str,
         initial: bool = False,
         command: Callable[[bool], None] | None = None,
+        visibility: Callable[[], bool] | None = None,
     ) -> None:
-        super().__init__(parent, label)
+        super().__init__(parent, label, visibility=visibility)
         self.value = tk.BooleanVar(value=initial)
 
         text = tkk.Label(self, text=label)
@@ -57,8 +74,9 @@ class OptionDropdown(Option):
         values: Sequence[str],
         initial: str | None = None,
         command: Callable[[str], None] | None = None,
+        visibility: Callable[[], bool] | None = None,
     ) -> None:
-        super().__init__(parent, label)
+        super().__init__(parent, label, visibility=visibility)
 
         text = tkk.Label(self, text=label)
         text.grid(row=0, column=0, sticky="w", padx=(0, 10))
@@ -86,6 +104,24 @@ class UI(tkk.Tk):
         except RuntimeError:
             pass
         self.buildUI()
+        self._update_loop()
+
+    def _update_loop(self) -> None:
+        changed = False
+        for option in getattr(self, "_options", []):
+            if option.check_visibility_change():
+                changed = True
+        
+        if changed:
+            # First remove all
+            for option in self._options:
+                option.pack_forget()
+            # Then pack only the visible ones, in their original creation order
+            for option in self._options:
+                if option._is_visible:
+                    option.pack(in_=option._parent_container, fill="x", padx=8, pady=5)
+                    
+        self.after(100, self._update_loop)
 
     def _on_closing(self) -> None:
         if self._sensor is not None:
@@ -110,7 +146,7 @@ class UI(tkk.Tk):
 
     def _build_left_panel(self) -> None:
         #todo: auto-refresh every few hundered ms
-        if self._sensor is None:
+        if self._sensor is None or not self._sensor.ser or not self._sensor.ser.is_open:
             self._left_panel = tkk.Frame(self._main, padding=10)
             self._left_panel.grid(row=0, column=0, sticky="nsew")
 
@@ -120,7 +156,7 @@ class UI(tkk.Tk):
             self._left_panel = tkk.Frame(self._main, padding=10)
             self._left_panel.grid(row=0, column=0, sticky="nsew")
 
-            figure = self._sensor.plotRaster()
+            figure = RasterFigure(self._sensor.getMap())
             canvas = FigureCanvasTkAgg(figure, master=self._left_panel)
             canvas.draw()
             canvas.get_tk_widget().pack(fill="both", expand=True)
