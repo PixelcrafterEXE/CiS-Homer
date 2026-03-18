@@ -168,20 +168,32 @@ class UI(tkk.Tk):
         self.after(self._measurement_rate, self._measurement_loop)
 
     def _update_measurement(self) -> None:
-        if not self._sensor or not self._sensor.ser or not self._sensor.ser.is_open:
+        sensor_active = bool(self._sensor and self._sensor.ser and self._sensor.ser.is_open)
+
+        # Rebuild layout if sensor connection state changed
+        if sensor_active != hasattr(self, '_tabview'):
+            self._build_left_panel()
+
+        if not sensor_active or not hasattr(self, '_tabview'):
             return
-        if not hasattr(self, '_notebook'):
-            return
+            
         try:
-            current_tab = self._notebook.index("current")
+            current_tab = self._tabview.index("current")
             if current_tab == 0 and self._raster_fig:
                 self._raster_fig.update_data(self._sensor.getMap())
             elif current_tab == 1 and self._bar_fig:
                 self._bar_fig.update_data(self._sensor.getRaw())
-            elif current_tab == 2 and hasattr(self, '_table_frame') and self._table_frame:
+            elif current_tab == 2 and getattr(self, '_table_frame', None):
                 self._table_frame.update_data(self._sensor.getMap())
         except Exception as e:
             print(f"Error updating measurement: {e}")
+            if self._sensor and self._sensor.ser:
+                try:
+                    self._sensor.ser.close()
+                except Exception:
+                    pass
+                self._sensor.ser = None
+            self._build_left_panel()
 
     def _update_loop(self) -> None:
         changed = False
@@ -222,33 +234,39 @@ class UI(tkk.Tk):
         self._build_right_panel()
 
     def _build_left_panel(self) -> None:
-        self._left_panel = tkk.Frame(self._main, padding=10)
-        self._left_panel.grid(row=0, column=0, sticky="nsew")
+        if hasattr(self, '_left_panel'):
+            for widget in self._left_panel.winfo_children():
+                widget.destroy()
+        else:
+            self._left_panel = tkk.Frame(self._main, padding=10)
+            self._left_panel.grid(row=0, column=0, sticky="nsew")
 
         if self._sensor is None or not self._sensor.ser or not self._sensor.ser.is_open:
             error_label = tkk.Label(self._left_panel, text="No sensor detected", foreground="red")
             error_label.pack(expand=True)
             self._raster_canvas = None
+            if hasattr(self, '_tabview'):
+                delattr(self, '_tabview')
         else:
-            self._notebook = tkk.Notebook(self._left_panel)
-            self._notebook.pack(fill="both", expand=True)
+            self._tabview = tkk.Notebook(self._left_panel)
+            self._tabview.pack(fill="both", expand=True)
 
             # Rasteransicht
-            self._frame_raster_container = tkk.Frame(self._notebook)
-            self._notebook.add(self._frame_raster_container, text="Rasteransicht")
+            self._frame_raster_container = tkk.Frame(self._tabview)
+            self._tabview.add(self._frame_raster_container, text="Rasteransicht")
             self._rebuild_raster_fig()
 
             # Balkenansicht
-            self._frame_bar = tkk.Frame(self._notebook)
+            self._frame_bar = tkk.Frame(self._tabview)
             self._bar_fig = BarFigure(self._sensor.getRaw())
             canvas_bar = FigureCanvasTkAgg(self._bar_fig, master=self._frame_bar)
             canvas_bar.draw()
             canvas_bar.get_tk_widget().pack(fill="both", expand=True)
-            self._notebook.add(self._frame_bar, text="Balkenansicht")
+            self._tabview.add(self._frame_bar, text="Balkenansicht")
 
             # Tabellenansicht
-            self._table_frame = TableFrame(self._notebook, self._sensor.getMap())
-            self._notebook.add(self._table_frame, text="Tabellenansicht")
+            self._table_frame = TableFrame(self._tabview, self._sensor.getMap())
+            self._tabview.add(self._table_frame, text="Tabellenansicht")
 
     def _rebuild_raster_fig(self) -> None:
         if not self._sensor or not self._sensor.ser or not self._sensor.ser.is_open:
