@@ -2,14 +2,17 @@ import numpy as np
 from matplotlib.figure import Figure
 import matplotlib.colors as mcolors
 from matplotlib.collections import LineCollection
+import tkinter as tk
+import ttkbootstrap as tkk
 
 class RasterFigure(Figure):
     def __init__(self, data: np.ndarray, autoRange: bool = False, logRange: bool = True, *args, **kwargs):
         kwargs.setdefault('figsize', (8, 6))
         super().__init__(*args, **kwargs)
         
-        self.subplots_adjust(wspace=0.05)
-        ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [8, 1]})
+        self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
+        
+        ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [15, 1]})
         
         data = data.astype(float)
         rows, cols = data.shape
@@ -124,3 +127,31 @@ class BarFigure(Figure):
             bar.set_height(val)
         if hasattr(self, 'canvas') and self.canvas:
             self.canvas.draw_idle()
+
+class TableFrame(tkk.Frame):
+    def __init__(self, parent, data: np.ndarray, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self.configure(padding=10)
+        self._table_vars = []
+        for i in range(9):
+            row_vars = []
+            for j in range(9):
+                var = tk.StringVar(value="")
+                val = data[i, j]
+                if not np.isnan(val):
+                    var.set(str(int(val)))
+                lbl = tkk.Label(self, textvariable=var, anchor="center", borderwidth=1, relief="solid")
+                lbl.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
+                self.rowconfigure(i, weight=1)
+                self.columnconfigure(j, weight=1)
+                row_vars.append(var)
+            self._table_vars.append(row_vars)
+
+    def update_data(self, data: np.ndarray) -> None:
+        for i in range(9):
+            for j in range(9):
+                val = data[i, j]
+                if np.isnan(val):
+                    self._table_vars[i][j].set("")
+                else:
+                    self._table_vars[i][j].set(str(int(val)))
