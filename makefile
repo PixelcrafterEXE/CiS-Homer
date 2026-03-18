@@ -17,9 +17,16 @@ PYTHON       := $(VENV_DIR)/bin/python3
 PIP          := $(VENV_DIR)/bin/pip
 RM_DIR       := rm -rf
 VENV_PATH_CL := $(VENV_DIR)
-BUILD_CMD    := cd Firmware && sudo ./build.sh
 BUILD_PATH_CL:= Firmware/build
 WORK_PATH_CL := Firmware/work
+
+UNAME_M := $(shell uname -m)
+ifneq (,$(filter $(UNAME_M),x86_64 amd64 i386 i686)) ### Linux X86
+BUILD_CMD    := docker run --rm --privileged multiarch/qemu-user-static --reset -p yes && cd Firmware && ./build-docker.sh
+else ### Linux ARM
+BUILD_CMD    := cd Firmware && sudo ./build.sh
+endif
+
 endif
 
 
