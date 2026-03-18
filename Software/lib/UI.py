@@ -6,6 +6,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 import lib.Sensor as Serial
 from lib.Sensor import Sensor
+from lib.Plotting import RasterFigure
 
 
 class Option(tkk.Frame):
@@ -110,7 +111,7 @@ class UI(tkk.Tk):
 
     def _build_left_panel(self) -> None:
         #todo: auto-refresh every few hundered ms
-        if self._sensor is None:
+        if self._sensor is None or not self._sensor.ser or not self._sensor.ser.is_open:
             self._left_panel = tkk.Frame(self._main, padding=10)
             self._left_panel.grid(row=0, column=0, sticky="nsew")
 
@@ -120,7 +121,7 @@ class UI(tkk.Tk):
             self._left_panel = tkk.Frame(self._main, padding=10)
             self._left_panel.grid(row=0, column=0, sticky="nsew")
 
-            figure = self._sensor.plotRaster()
+            figure = RasterFigure(self._sensor.getMap())
             canvas = FigureCanvasTkAgg(figure, master=self._left_panel)
             canvas.draw()
             canvas.get_tk_widget().pack(fill="both", expand=True)
