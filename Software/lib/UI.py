@@ -7,7 +7,7 @@ import numpy as np
 
 import lib.Sensor as Serial
 from lib.Sensor import Sensor
-from lib.Plotting import RasterFigure, BarFigure
+from lib.Plotting import RasterFigure, BarFigure, TableFrame
 
 
 class Option(tkk.Frame):
@@ -178,15 +178,8 @@ class UI(tkk.Tk):
                 self._raster_fig.update_data(self._sensor.getMap())
             elif current_tab == 1 and self._bar_fig:
                 self._bar_fig.update_data(self._sensor.getRaw())
-            elif current_tab == 2 and hasattr(self, '_table_vars'):
-                map_data = self._sensor.getMap()
-                for i in range(9):
-                    for j in range(9):
-                        val = map_data[i, j]
-                        if np.isnan(val):
-                            self._table_vars[i][j].set("")
-                        else:
-                            self._table_vars[i][j].set(str(int(val)))
+            elif current_tab == 2 and hasattr(self, '_table_frame') and self._table_frame:
+                self._table_frame.update_data(self._sensor.getMap())
         except Exception as e:
             print(f"Error updating measurement: {e}")
 
@@ -229,26 +222,21 @@ class UI(tkk.Tk):
         self._build_right_panel()
 
     def _build_left_panel(self) -> None:
-        #todo: auto-refresh every few hundered ms
         self._left_panel = tkk.Frame(self._main, padding=10)
         self._left_panel.grid(row=0, column=0, sticky="nsew")
 
         if self._sensor is None or not self._sensor.ser or not self._sensor.ser.is_open:
             error_label = tkk.Label(self._left_panel, text="No sensor detected", foreground="red")
             error_label.pack(expand=True)
-            self._raster_fig = None
-            self._bar_fig = None
+            self._raster_canvas = None
         else:
             self._notebook = tkk.Notebook(self._left_panel)
             self._notebook.pack(fill="both", expand=True)
 
             # Rasteransicht
-            self._frame_raster = tkk.Frame(self._notebook)
-            self._raster_fig = RasterFigure(self._sensor.getMap())
-            canvas_raster = FigureCanvasTkAgg(self._raster_fig, master=self._frame_raster)
-            canvas_raster.draw()
-            canvas_raster.get_tk_widget().pack(fill="both", expand=True)
-            self._notebook.add(self._frame_raster, text="Rasteransicht")
+            self._frame_raster_container = tkk.Frame(self._notebook)
+            self._notebook.add(self._frame_raster_container, text="Rasteransicht")
+            self._rebuild_raster_fig()
 
             # Balkenansicht
             self._frame_bar = tkk.Frame(self._notebook)
@@ -259,23 +247,23 @@ class UI(tkk.Tk):
             self._notebook.add(self._frame_bar, text="Balkenansicht")
 
             # Tabellenansicht
-            self._frame_table = tkk.Frame(self._notebook, padding=10)
-            self._table_vars = []
-            map_data = self._sensor.getMap()
-            for i in range(9):
-                row_vars = []
-                for j in range(9):
-                    var = tk.StringVar(value="")
-                    val = map_data[i, j]
-                    if not np.isnan(val):
-                        var.set(str(int(val)))
-                    lbl = tkk.Label(self._frame_table, textvariable=var, anchor="center", borderwidth=1, relief="solid")
-                    lbl.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
-                    self._frame_table.rowconfigure(i, weight=1)
-                    self._frame_table.columnconfigure(j, weight=1)
-                    row_vars.append(var)
-                self._table_vars.append(row_vars)
-            self._notebook.add(self._frame_table, text="Tabellenansicht")
+            self._table_frame = TableFrame(self._notebook, self._sensor.getMap())
+            self._notebook.add(self._table_frame, text="Tabellenansicht")
+
+    def _rebuild_raster_fig(self) -> None:
+        if not self._sensor or not self._sensor.ser or not self._sensor.ser.is_open:
+            return
+        
+        if hasattr(self, '_raster_canvas') and self._raster_canvas is not None:
+            self._raster_canvas.get_tk_widget().destroy()
+
+        auto_range = self._auto_range_toggle.value.get() if hasattr(self, '_auto_range_toggle') else False
+        log_range = self._log_scale_toggle.value.get() if hasattr(self, '_log_scale_toggle') else True
+        
+        self._raster_fig = RasterFigure(self._sensor.getMap(), autoRange=auto_range, logRange=log_range)
+        self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._frame_raster_container)
+        self._raster_canvas.draw()
+        self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
 
     def _build_right_panel(self) -> None:
         self._right_panel = tkk.Frame(self._main, padding=(0, 10, 10, 10))
@@ -311,16 +299,18 @@ class UI(tkk.Tk):
             )
         )
 
-        
-        self._stream_toggle = OptionToggle(self._options_container, "Messdaten Streamen", initial=True)
-        self._add_option(self._stream_toggle)
+        messung_section = OptionSection(self._options_container, "Messung")
+        self._add_option(messung_section)
+
+        self._stream_toggle = OptionToggle(messung_section.content_frame, "Messdaten Streamen", initial=True)
+        messung_section.add_option(self._stream_toggle)
 
         def set_freq(freq_str: str) -> None:
             self._measurement_rate = int(freq_str)
             
-        self._add_option(
+        messung_section.add_option(
             OptionDropdown(
-                self._options_container,
+                messung_section.content_frame,
                 "Messfrequenz (ms)",
                 ["50", "100", "200", "500", "1000", "2000"],
                 "100",
@@ -329,15 +319,33 @@ class UI(tkk.Tk):
             )
         )
 
-        self._add_option(
+        messung_section.add_option(
             OptionButton(
-                self._options_container, 
+                messung_section.content_frame, 
                 "Messen", 
                 command=self._update_measurement,
                 visibility=lambda: not self._stream_toggle.value.get()
             )
         )
-
+        
+        display_section = OptionSection(self._options_container, "Anzeige")
+        self._add_option(display_section)
+        
+        self._auto_range_toggle = OptionToggle(
+            display_section.content_frame, 
+            "Autom. Range", 
+            initial=False,
+            command=lambda _: self._rebuild_raster_fig()
+        )
+        display_section.add_option(self._auto_range_toggle)
+        
+        self._log_scale_toggle = OptionToggle(
+            display_section.content_frame, 
+            "Log. Maßstab", 
+            initial=True,
+            command=lambda _: self._rebuild_raster_fig()
+        )
+        display_section.add_option(self._log_scale_toggle)
 
     def _add_option(self, option: Option) -> None:
         self._options.append(option)
