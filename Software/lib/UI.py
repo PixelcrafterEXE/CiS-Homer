@@ -3,10 +3,11 @@ from typing import Callable, Sequence
 
 import ttkbootstrap as tkk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
 
 import lib.Sensor as Serial
 from lib.Sensor import Sensor
-from lib.Plotting import RasterFigure
+from lib.Plotting import RasterFigure, BarFigure, TableFrame
 
 
 class Option(tkk.Frame):
@@ -94,17 +95,93 @@ class OptionDropdown(Option):
         dropdown.bind("<<ComboboxSelected>>", _on_select)
         self.columnconfigure(1, weight=1)
 
+
+class OptionSection(Option):
+    def __init__(self, parent, label: str, visibility: Callable[[], bool] | None = None) -> None:
+        super().__init__(parent, label, visibility=visibility)
+        self.configure(padding=0)
+        self._children: list[Option] = []
+        self._is_expanded = True
+        
+        self._header_btn = tkk.Button(
+            self, 
+            text=f"▼  {self._label}", 
+            command=self._toggle, 
+            bootstyle="link",
+        )
+        self._header_btn.grid(row=0, column=0, sticky="w")
+        
+        self.content_frame = tkk.Frame(self)
+        self.content_frame.grid(row=1, column=0, sticky="nsew", pady=(5, 0), padx=(10, 0))
+        self.content_frame.columnconfigure(0, weight=1)
+
+    def _toggle(self) -> None:
+        self._is_expanded = not self._is_expanded
+        if self._is_expanded:
+            self._header_btn.configure(text=f"▼  {self._label}")
+            self.content_frame.grid(row=1, column=0, sticky="nsew", pady=(5, 0), padx=(10, 0))
+        else:
+            self._header_btn.configure(text=f"▶  {self._label}")
+            self.content_frame.grid_forget()
+
+    def add_option(self, option: Option) -> None:
+        self._children.append(option)
+        option.add_to(self.content_frame)
+
+    def check_visibility_change(self) -> bool:
+        changed = super().check_visibility_change()
+        
+        children_changed = False
+        for child in self._children:
+            if child.check_visibility_change():
+                children_changed = True
+                
+        if children_changed:
+            for child in self._children:
+                child.pack_forget()
+            for child in self._children:
+                if child._is_visible:
+                    child.pack(in_=child._parent_container, fill="x", padx=8, pady=5)
+        
+        return changed
+
+
 class UI(tkk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
         self._sensor: Sensor | None = None
+        self._raster_fig: RasterFigure | None = None
+        self._bar_fig: BarFigure | None = None
+        self._measurement_rate = 100
         try:
             self._sensor = Sensor()
         except RuntimeError:
             pass
         self.buildUI()
         self._update_loop()
+        self._measurement_loop()
+
+    def _measurement_loop(self) -> None:
+        if hasattr(self, '_stream_toggle') and self._stream_toggle.value.get():
+            self._update_measurement()
+        self.after(self._measurement_rate, self._measurement_loop)
+
+    def _update_measurement(self) -> None:
+        if not self._sensor or not self._sensor.ser or not self._sensor.ser.is_open:
+            return
+        if not hasattr(self, '_notebook'):
+            return
+        try:
+            current_tab = self._notebook.index("current")
+            if current_tab == 0 and self._raster_fig:
+                self._raster_fig.update_data(self._sensor.getMap())
+            elif current_tab == 1 and self._bar_fig:
+                self._bar_fig.update_data(self._sensor.getRaw())
+            elif current_tab == 2 and hasattr(self, '_table_frame') and self._table_frame:
+                self._table_frame.update_data(self._sensor.getMap())
+        except Exception as e:
+            print(f"Error updating measurement: {e}")
 
     def _update_loop(self) -> None:
         changed = False
@@ -145,21 +222,48 @@ class UI(tkk.Tk):
         self._build_right_panel()
 
     def _build_left_panel(self) -> None:
-        #todo: auto-refresh every few hundered ms
-        if self._sensor is None or not self._sensor.ser or not self._sensor.ser.is_open:
-            self._left_panel = tkk.Frame(self._main, padding=10)
-            self._left_panel.grid(row=0, column=0, sticky="nsew")
+        self._left_panel = tkk.Frame(self._main, padding=10)
+        self._left_panel.grid(row=0, column=0, sticky="nsew")
 
+        if self._sensor is None or not self._sensor.ser or not self._sensor.ser.is_open:
             error_label = tkk.Label(self._left_panel, text="No sensor detected", foreground="red")
             error_label.pack(expand=True)
+            self._raster_canvas = None
         else:
-            self._left_panel = tkk.Frame(self._main, padding=10)
-            self._left_panel.grid(row=0, column=0, sticky="nsew")
+            self._notebook = tkk.Notebook(self._left_panel)
+            self._notebook.pack(fill="both", expand=True)
 
-            figure = RasterFigure(self._sensor.getMap())
-            canvas = FigureCanvasTkAgg(figure, master=self._left_panel)
-            canvas.draw()
-            canvas.get_tk_widget().pack(fill="both", expand=True)
+            # Rasteransicht
+            self._frame_raster_container = tkk.Frame(self._notebook)
+            self._notebook.add(self._frame_raster_container, text="Rasteransicht")
+            self._rebuild_raster_fig()
+
+            # Balkenansicht
+            self._frame_bar = tkk.Frame(self._notebook)
+            self._bar_fig = BarFigure(self._sensor.getRaw())
+            canvas_bar = FigureCanvasTkAgg(self._bar_fig, master=self._frame_bar)
+            canvas_bar.draw()
+            canvas_bar.get_tk_widget().pack(fill="both", expand=True)
+            self._notebook.add(self._frame_bar, text="Balkenansicht")
+
+            # Tabellenansicht
+            self._table_frame = TableFrame(self._notebook, self._sensor.getMap())
+            self._notebook.add(self._table_frame, text="Tabellenansicht")
+
+    def _rebuild_raster_fig(self) -> None:
+        if not self._sensor or not self._sensor.ser or not self._sensor.ser.is_open:
+            return
+        
+        if hasattr(self, '_raster_canvas') and self._raster_canvas is not None:
+            self._raster_canvas.get_tk_widget().destroy()
+
+        auto_range = self._auto_range_toggle.value.get() if hasattr(self, '_auto_range_toggle') else False
+        log_range = self._log_scale_toggle.value.get() if hasattr(self, '_log_scale_toggle') else True
+        
+        self._raster_fig = RasterFigure(self._sensor.getMap(), autoRange=auto_range, logRange=log_range)
+        self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._frame_raster_container)
+        self._raster_canvas.draw()
+        self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
 
     def _build_right_panel(self) -> None:
         self._right_panel = tkk.Frame(self._main, padding=(0, 10, 10, 10))
@@ -173,19 +277,21 @@ class UI(tkk.Tk):
 
         self._options: list[Option] = []
 
+        serial_section = OptionSection(self._options_container, "Verbindung")
+        self._add_option(serial_section)
         
-        self._add_option(
+        serial_section.add_option(
             OptionDropdown(
-                self._options_container,
+                serial_section.content_frame,
                 "Serieller Port",
                 ["auto"] + [port.device for port in Serial.listPorts()], #todo: show device name
                 "auto",
                 command=lambda port: self._sensor.setPort(port) if self._sensor else None
             )
         )
-        self._add_option(
+        serial_section.add_option(
             OptionDropdown(
-                self._options_container,
+                serial_section.content_frame,
                 "Baud-Rate", 
                 ["9600", "19200", "38400", "57600", "115200"],
                 "115200",
@@ -193,19 +299,56 @@ class UI(tkk.Tk):
             )
         )
 
-        
-        self._add_option(OptionToggle(self._options_container, "Messdaten Streamen", initial=True))
+        messung_section = OptionSection(self._options_container, "Messung")
+        self._add_option(messung_section)
 
-        self._add_option(
-            OptionButton(
-                self._options_container, 
-                "Messen", 
-                command=lambda: (
-                    self._build_left_panel(), 
-                    print(self._sensor.getMap())
-                )
+        self._stream_toggle = OptionToggle(messung_section.content_frame, "Messdaten Streamen", initial=True)
+        messung_section.add_option(self._stream_toggle)
+
+        def set_freq(freq_str: str) -> None:
+            self._measurement_rate = int(freq_str)
+            
+        messung_section.add_option(
+            OptionDropdown(
+                messung_section.content_frame,
+                "Messfrequenz (ms)",
+                ["50", "100", "200", "500", "1000", "2000"],
+                "100",
+                command=set_freq,
+                visibility=lambda: self._stream_toggle.value.get()
             )
         )
+
+        messung_section.add_option(
+            OptionButton(
+                messung_section.content_frame, 
+                "Messen", 
+                command=self._update_measurement,
+                visibility=lambda: not self._stream_toggle.value.get()
+            )
+        )
+        
+        display_section = OptionSection(self._options_container, "Anzeige")
+        self._add_option(display_section)
+        
+        self._auto_range_toggle = OptionToggle(
+            display_section.content_frame, 
+            "Autom. Range", 
+            initial=False,
+            command=lambda _: self._rebuild_raster_fig()
+        )
+        display_section.add_option(self._auto_range_toggle)
+        
+        self._log_scale_toggle = OptionToggle(
+            display_section.content_frame, 
+            "Log. Maßstab", 
+            initial=True,
+            command=lambda _: self._rebuild_raster_fig()
+        )
+        display_section.add_option(self._log_scale_toggle)
+
+        export_section = OptionSection(self._options_container, "Exportieren")
+        self._add_option(export_section)
 
 
     def _add_option(self, option: Option) -> None:

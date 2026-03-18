@@ -2,14 +2,17 @@ import numpy as np
 from matplotlib.figure import Figure
 import matplotlib.colors as mcolors
 from matplotlib.collections import LineCollection
+import tkinter as tk
+import ttkbootstrap as tkk
 
 class RasterFigure(Figure):
     def __init__(self, data: np.ndarray, autoRange: bool = False, logRange: bool = True, *args, **kwargs):
         kwargs.setdefault('figsize', (8, 6))
         super().__init__(*args, **kwargs)
         
-        self.subplots_adjust(wspace=0.05)
-        ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [8, 1]})
+        self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
+        
+        ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [15, 1]})
         
         data = data.astype(float)
         rows, cols = data.shape
@@ -100,16 +103,79 @@ class RasterFigure(Figure):
         if hasattr(self, '_connect_events'):
             self._connect_events(self)
 
+    def update_data(self, data: np.ndarray) -> None:
+        self.im.set_data(data.astype(float))
+        if hasattr(self, 'canvas') and self.canvas:
+            self.canvas.draw_idle()
+
 
 class BarFigure(Figure):
     def __init__(self, data: np.ndarray, *args, **kwargs):
-        kwargs.setdefault('figsize', (10, 5))
+        kwargs.setdefault('figsize', (10, 8))
         super().__init__(*args, **kwargs)
         
-        ax = self.add_subplot(111)
+        self.subplots_adjust(left=0.05, right=0.98, top=0.95, bottom=0.08, hspace=0.3)
+        self.ax1 = self.add_subplot(211)
+        self.ax2 = self.add_subplot(212)
+        
         indices = np.arange(1, 65)
-        ax.bar(indices, data)
-        ax.set_xlabel("Channel Index")
-        ax.set_ylabel("Value")
-        ax.set_title("Channel Values")
-        ax.set_xlim(0, 65)
+        
+        # Top subplot: Channels 1-32
+        self.bars1 = self.ax1.bar(indices[:32], data[:32])
+        self.ax1.set_xlabel("Channel Index")
+        self.ax1.set_ylabel("Value")
+        self.ax1.set_title("Channels 1-32")
+        self.ax1.set_xlim(0, 33)
+        self.ax1.set_xticks(indices[:32])
+        
+        # Bottom subplot: Channels 33-64
+        self.bars2 = self.ax2.bar(indices[32:], data[32:])
+        self.ax2.set_xlabel("Channel Index")
+        self.ax2.set_ylabel("Value")
+        self.ax2.set_title("Channels 33-64")
+        self.ax2.set_xlim(32, 65)
+        self.ax2.set_xticks(indices[32:])
+
+    def update_data(self, data: np.ndarray) -> None:
+        for bar, val in zip(self.bars1, data[:32]):
+            bar.set_height(val)
+        for bar, val in zip(self.bars2, data[32:]):
+            bar.set_height(val)
+
+        # Update y-limits if necessary to avoid static cutoffs dynamically
+        max_val1 = np.max(data[:32]) if len(data[:32]) else 1.0
+        max_val2 = np.max(data[32:]) if len(data[32:]) else 1.0
+        
+        self.ax1.set_ylim(0, max_val1 * 1.1)
+        self.ax2.set_ylim(0, max_val2 * 1.1)
+        
+        if hasattr(self, 'canvas') and self.canvas:
+            self.canvas.draw_idle()
+
+class TableFrame(tkk.Frame):
+    def __init__(self, parent, data: np.ndarray, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self.configure(padding=10)
+        self._table_vars = []
+        for i in range(9):
+            row_vars = []
+            for j in range(9):
+                var = tk.StringVar(value="")
+                val = data[i, j]
+                if not np.isnan(val):
+                    var.set(str(int(val)))
+                lbl = tkk.Label(self, textvariable=var, anchor="center", borderwidth=1, relief="solid")
+                lbl.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
+                self.rowconfigure(i, weight=1)
+                self.columnconfigure(j, weight=1)
+                row_vars.append(var)
+            self._table_vars.append(row_vars)
+
+    def update_data(self, data: np.ndarray) -> None:
+        for i in range(9):
+            for j in range(9):
+                val = data[i, j]
+                if np.isnan(val):
+                    self._table_vars[i][j].set("")
+                else:
+                    self._table_vars[i][j].set(str(int(val)))
