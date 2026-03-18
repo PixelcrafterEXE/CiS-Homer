@@ -215,5 +215,6 @@ class Sensor:
         for i, pos in enumerate(positions):
             if pos is not None:
                 array[pos[0] + 4, pos[1] + 4] = raw[i]
+        print(array)
         return array
             
