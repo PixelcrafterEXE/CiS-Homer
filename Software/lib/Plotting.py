@@ -100,16 +100,27 @@ class RasterFigure(Figure):
         if hasattr(self, '_connect_events'):
             self._connect_events(self)
 
+    def update_data(self, data: np.ndarray) -> None:
+        self.im.set_data(data.astype(float))
+        if hasattr(self, 'canvas') and self.canvas:
+            self.canvas.draw_idle()
+
 
 class BarFigure(Figure):
     def __init__(self, data: np.ndarray, *args, **kwargs):
         kwargs.setdefault('figsize', (10, 5))
         super().__init__(*args, **kwargs)
         
-        ax = self.add_subplot(111)
+        self.ax = self.add_subplot(111)
         indices = np.arange(1, 65)
-        ax.bar(indices, data)
-        ax.set_xlabel("Channel Index")
-        ax.set_ylabel("Value")
-        ax.set_title("Channel Values")
-        ax.set_xlim(0, 65)
+        self.bars = self.ax.bar(indices, data)
+        self.ax.set_xlabel("Channel Index")
+        self.ax.set_ylabel("Value")
+        self.ax.set_title("Channel Values")
+        self.ax.set_xlim(0, 65)
+
+    def update_data(self, data: np.ndarray) -> None:
+        for bar, val in zip(self.bars, data):
+            bar.set_height(val)
+        if hasattr(self, 'canvas') and self.canvas:
+            self.canvas.draw_idle()
