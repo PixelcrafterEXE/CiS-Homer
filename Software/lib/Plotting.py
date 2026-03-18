@@ -32,12 +32,12 @@ class RasterFigure(Figure):
             lo_n = float(np.clip(lo_n, 0.0, 1.0))
             hi_n = float(np.clip(hi_n, lo_n + 1e-6, 1.0))
             cmap = mcolors.LinearSegmentedColormap.from_list(
-                'raster', [(0.0, 'black'), (lo_n, 'black'), (hi_n, 'white'), (1.0, 'white')]
+                'raster', [(0.0, 'black'), (lo_n, 'black'), (hi_n, 'white'), (1.0, 'white')], N=65536
             )
             cmap.set_bad('none')
             return cmap
 
-        norm = mcolors.LogNorm(vmin=1, vmax=65535) if logRange else mcolors.Normalize(vmin=0, vmax=65535)
+        norm = mcolors.LogNorm(vmin=1, vmax=65535, clip=True) if logRange else mcolors.Normalize(vmin=0, vmax=65535, clip=True)
 
         self.im = ax.imshow(data, cmap=make_cmap(lo, hi), norm=norm, interpolation='nearest', aspect='equal')
         ax.set_xticks([])
