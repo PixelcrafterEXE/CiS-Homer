@@ -5,12 +5,12 @@ description = "CiS HomerPi"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "matplotlib==3.10.8",
-    "numpy==2.4.3",
-    "pillow==12.1.1",
+    "matplotlib>=3.9.0",
+    "numpy>=1.26.0",
+    "pillow>=11.3.0",
     "pyparsing==3.3.2",
     "pyserial==3.5",
-    "ttkbootstrap==1.20.2"
+    "ttkbootstrap>=1.18"
 ]
 
 [build-system]

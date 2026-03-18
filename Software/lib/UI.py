@@ -1,3 +1,4 @@
+from __future__ import annotations
 import tkinter as tk
 from typing import Callable, Sequence
 

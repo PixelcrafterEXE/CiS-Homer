@@ -26,6 +26,7 @@ Ensure the following are installed on your system:
 ### 0.B (Windows): Setup WSL and Requirements
 Install WSL by running
 ```bash
+wsl --install --no-distribution
 wsl --install -d Ubuntu
 ```
 install Git, GNU Make, Python (for running locally):
