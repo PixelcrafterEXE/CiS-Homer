@@ -75,7 +75,7 @@ positions = [
 ]
 
 
-def listPorts():
+def listPorts() -> list:
     '''gets all serial ports with attached devices'''
     return [port for port in list_ports.comports()]
 
@@ -91,29 +91,29 @@ class Sensor:
         self._timer = None
         self._pollSerial()
 
-    def _reconnect(self):
+    def _reconnect(self) -> None:
         if self.ser is not None:
             if self.ser.is_open:
                 self.ser.close()
             self.ser = None
 
-    def setBaud(self, baud: int):
+    def setBaud(self, baud: int) -> None:
         print(f"Setting baud rate to {baud}...")
         if self.baud != baud:
             self.baud = baud
             self._reconnect()
     
-    def setPort(self, port: str):
+    def setPort(self, port: str) -> None:
         if self.port != port:
             self.port = port
             self._reconnect()
     
-    def setDeviceID(self, device_id: str):
+    def setDeviceID(self, device_id: str) -> None:
         if self.device_id != device_id:
             self.device_id = device_id
             self._reconnect()
 
-    def stop(self):
+    def stop(self) -> None:
         self._running = False
         if self._timer is not None:
             self._timer.cancel()
@@ -122,10 +122,10 @@ class Sensor:
         if self.ser is not None and self.ser.is_open:
             self.ser.close()
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.stop()
     
-    def _pollSerial(self):
+    def _pollSerial(self) -> None:
         '''runs scheduled to check for available devices if connection doesnt exist yet;'''
         if not self._running:
             return
@@ -164,7 +164,7 @@ class Sensor:
             self._timer = threading.Timer(0.1, self._pollSerial)
             self._timer.start()
     
-    def getRaw(self):
+    def getRaw(self) -> np.ndarray:
         '''requests one raw frame of sensor data and returns it as a numpy array of shape (64,) with dtype uint16.'''
         ser = self.ser
         if ser is None or not ser.is_open:
@@ -208,7 +208,7 @@ class Sensor:
         except Exception as e:
             raise RuntimeError(f"Failed to read sensor data: {e}")
 
-    def getMap(self):
+    def getMap(self) -> np.ndarray:
         '''returns the latest sensor frame mapped to a 9x9 grid.'''
         raw = self.getRaw()
         array = np.full((9, 9), np.nan)
@@ -218,7 +218,7 @@ class Sensor:
         return array
 
 
-    def plotRaster(self, autoRange=False, logRange=True):
+    def plotRaster(self, autoRange: bool = False, logRange: bool = True) -> Figure:
         import matplotlib.pyplot as plt
         import matplotlib.colors as mcolors
         from matplotlib.collections import LineCollection
@@ -300,7 +300,7 @@ class Sensor:
         return fig
     
 
-    def plotBar(self):
+    def plotBar(self) -> Figure:
         import matplotlib.pyplot as plt
         data = self.getRaw()
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -314,6 +314,6 @@ class Sensor:
         
         return fig
 
-    def plotTable(self):
+    def plotTable(self) -> None:
         pass
             
