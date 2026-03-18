@@ -347,6 +347,10 @@ class UI(tkk.Tk):
         )
         display_section.add_option(self._log_scale_toggle)
 
+        export_section = OptionSection(self._options_container, "Exportieren")
+        self._add_option(export_section)
+
+
     def _add_option(self, option: Option) -> None:
         self._options.append(option)
         option.add_to(self._options_container)

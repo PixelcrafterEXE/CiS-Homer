@@ -111,20 +111,44 @@ class RasterFigure(Figure):
 
 class BarFigure(Figure):
     def __init__(self, data: np.ndarray, *args, **kwargs):
-        kwargs.setdefault('figsize', (10, 5))
+        kwargs.setdefault('figsize', (10, 8))
         super().__init__(*args, **kwargs)
         
-        self.ax = self.add_subplot(111)
+        self.subplots_adjust(left=0.05, right=0.98, top=0.95, bottom=0.08, hspace=0.3)
+        self.ax1 = self.add_subplot(211)
+        self.ax2 = self.add_subplot(212)
+        
         indices = np.arange(1, 65)
-        self.bars = self.ax.bar(indices, data)
-        self.ax.set_xlabel("Channel Index")
-        self.ax.set_ylabel("Value")
-        self.ax.set_title("Channel Values")
-        self.ax.set_xlim(0, 65)
+        
+        # Top subplot: Channels 1-32
+        self.bars1 = self.ax1.bar(indices[:32], data[:32])
+        self.ax1.set_xlabel("Channel Index")
+        self.ax1.set_ylabel("Value")
+        self.ax1.set_title("Channels 1-32")
+        self.ax1.set_xlim(0, 33)
+        self.ax1.set_xticks(indices[:32])
+        
+        # Bottom subplot: Channels 33-64
+        self.bars2 = self.ax2.bar(indices[32:], data[32:])
+        self.ax2.set_xlabel("Channel Index")
+        self.ax2.set_ylabel("Value")
+        self.ax2.set_title("Channels 33-64")
+        self.ax2.set_xlim(32, 65)
+        self.ax2.set_xticks(indices[32:])
 
     def update_data(self, data: np.ndarray) -> None:
-        for bar, val in zip(self.bars, data):
+        for bar, val in zip(self.bars1, data[:32]):
             bar.set_height(val)
+        for bar, val in zip(self.bars2, data[32:]):
+            bar.set_height(val)
+
+        # Update y-limits if necessary to avoid static cutoffs dynamically
+        max_val1 = np.max(data[:32]) if len(data[:32]) else 1.0
+        max_val2 = np.max(data[32:]) if len(data[32:]) else 1.0
+        
+        self.ax1.set_ylim(0, max_val1 * 1.1)
+        self.ax2.set_ylim(0, max_val2 * 1.1)
+        
         if hasattr(self, 'canvas') and self.canvas:
             self.canvas.draw_idle()
 
