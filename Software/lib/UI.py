@@ -172,6 +172,7 @@ class UI(tkk.Tk):
         self._raster_fig: RasterFigure | None = None
         self._bar_fig: BarFigure | None = None
         self._measurement_rate = 100
+        self._fetching_data = False
         try:
             self._sensor = Sensor()
         except RuntimeError:
@@ -192,26 +193,37 @@ class UI(tkk.Tk):
         if sensor_active != hasattr(self, '_tabview'):
             self._build_left_panel()
 
-        if not sensor_active or not hasattr(self, '_tabview'):
+        if not sensor_active or not hasattr(self, '_tabview') or self._fetching_data:
             return
-            
-        try:
-            current_tab = self._tabview.index("current")
-            if current_tab == 0 and self._raster_fig:
-                self._raster_fig.update_data(self._sensor.getMap())
-            elif current_tab == 1 and self._bar_fig:
-                self._bar_fig.update_data(self._sensor.getRaw())
-            elif current_tab == 2 and getattr(self, '_table_frame', None):
-                self._table_frame.update_data(self._sensor.getMap())
-        except Exception as e:
-            print(f"Error updating measurement: {e}")
-            if self._sensor and self._sensor.ser:
-                try:
-                    self._sensor.ser.close()
-                except Exception:
-                    pass
-                self._sensor.ser = None
-            self._build_left_panel()
+
+        self._fetching_data = True
+
+        def fetch_and_update():
+            try:
+                current_tab = self._tabview.index("current")
+                if current_tab == 0 and getattr(self, '_raster_fig', None):
+                    data = self._sensor.getMap()
+                    self.after(0, lambda: self._raster_fig.update_data(data))
+                elif current_tab == 1 and getattr(self, '_bar_fig', None):
+                    data = self._sensor.getRaw()
+                    self.after(0, lambda: self._bar_fig.update_data(data))
+                elif current_tab == 2 and getattr(self, '_table_frame', None):
+                    data = self._sensor.getMap()
+                    self.after(0, lambda: self._table_frame.update_data(data))
+            except Exception as e:
+                print(f"Error updating measurement: {e}")
+                if self._sensor and self._sensor.ser:
+                    try:
+                        self._sensor.ser.close()
+                    except Exception:
+                        pass
+                    self._sensor.ser = None
+                self.after(0, self._build_left_panel)
+            finally:
+                self._fetching_data = False
+                
+        import threading
+        threading.Thread(target=fetch_and_update, daemon=True).start()
 
     def _update_loop(self) -> None:
         changed = False
@@ -349,7 +361,7 @@ class UI(tkk.Tk):
         messung_section.add_option(
             OptionDropdown(
                 messung_section.content_frame,
-                "Messfrequenz (ms)",
+                "Messintervall (ms)",
                 ["50", "100", "200", "500", "1000", "2000"],
                 "100",
                 command=set_freq,
