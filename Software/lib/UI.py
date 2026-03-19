@@ -9,6 +9,7 @@ import numpy as np
 import lib.Sensor as Serial
 from lib.Sensor import Sensor
 from lib.Plotting import RasterFigure, BarFigure, TableFrame
+from lib.Storage import getCFGKey, setCFGKey
 
 
 class Option(tkk.Frame):
@@ -53,14 +54,21 @@ class OptionToggle(Option):
         initial: bool = False,
         command: Callable[[bool], None] | None = None,
         visibility: Callable[[], bool] | None = None,
+        persistent: bool = False,
     ) -> None:
         super().__init__(parent, label, visibility=visibility)
+        self.persistent = persistent
+        self.config_key = f"toggle_{label.replace(' ', '_')}"
+        if self.persistent:
+            initial = getCFGKey(self.config_key, initial)
         self.value = tk.BooleanVar(value=initial)
 
         text = tkk.Label(self, text=label)
         text.grid(row=0, column=0, sticky="w")
 
         def _on_toggle() -> None:
+            if self.persistent:
+                setCFGKey(self.config_key, self.value.get())
             if command:
                 command(self.value.get())
 
@@ -77,19 +85,27 @@ class OptionDropdown(Option):
         initial: str | None = None,
         command: Callable[[str], None] | None = None,
         visibility: Callable[[], bool] | None = None,
+        persistent: bool = False,
     ) -> None:
         super().__init__(parent, label, visibility=visibility)
+        self.persistent = persistent
+        self.config_key = f"dropdown_{label.replace(' ', '_')}"
 
         text = tkk.Label(self, text=label)
         text.grid(row=0, column=0, sticky="w", padx=(0, 10))
 
         selected = initial if initial is not None else (values[0] if values else "")
+        if self.persistent:
+            selected = getCFGKey(self.config_key, selected)
+            
         self.value = tk.StringVar(value=selected)
 
         dropdown = tkk.Combobox(self, textvariable=self.value, values=list(values), state="readonly")
         dropdown.grid(row=0, column=1, sticky="ew")
 
         def _on_select(_event=None) -> None:
+            if self.persistent:
+                setCFGKey(self.config_key, self.value.get())
             if command:
                 command(self.value.get())
 
@@ -150,6 +166,7 @@ class OptionSection(Option):
 class UI(tkk.Tk):
     def __init__(self) -> None:
         super().__init__()
+        #delete window on close button
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
         self._sensor: Sensor | None = None
         self._raster_fig: RasterFigure | None = None
@@ -305,7 +322,8 @@ class UI(tkk.Tk):
                 "Serieller Port",
                 ["auto"] + [port.device for port in Serial.listPorts()], #todo: show device name
                 "auto",
-                command=lambda port: self._sensor.setPort(port) if self._sensor else None
+                command=lambda port: self._sensor.setPort(port) if self._sensor else None,
+                persistent=True
             )
         )
         serial_section.add_option(
@@ -314,14 +332,15 @@ class UI(tkk.Tk):
                 "Baud-Rate", 
                 ["9600", "19200", "38400", "57600", "115200"],
                 "115200",
-                command=lambda baud: self._sensor.setBaud(int(baud)) if self._sensor else None
+                command=lambda baud: self._sensor.setBaud(int(baud)) if self._sensor else None,
+                persistent=True
             )
         )
 
         messung_section = OptionSection(self._options_container, "Messung")
         self._add_option(messung_section)
 
-        self._stream_toggle = OptionToggle(messung_section.content_frame, "Messdaten Streamen", initial=True)
+        self._stream_toggle = OptionToggle(messung_section.content_frame, "Messdaten Streamen", initial=True, persistent=True)
         messung_section.add_option(self._stream_toggle)
 
         def set_freq(freq_str: str) -> None:
@@ -334,7 +353,8 @@ class UI(tkk.Tk):
                 ["50", "100", "200", "500", "1000", "2000"],
                 "100",
                 command=set_freq,
-                visibility=lambda: self._stream_toggle.value.get()
+                visibility=lambda: self._stream_toggle.value.get(),
+                persistent=True
             )
         )
 
@@ -354,7 +374,8 @@ class UI(tkk.Tk):
             display_section.content_frame, 
             "Autom. Range", 
             initial=False,
-            command=lambda _: self._rebuild_raster_fig()
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True
         )
         display_section.add_option(self._auto_range_toggle)
         
@@ -362,7 +383,8 @@ class UI(tkk.Tk):
             display_section.content_frame, 
             "Log. Maßstab", 
             initial=True,
-            command=lambda _: self._rebuild_raster_fig()
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True
         )
         display_section.add_option(self._log_scale_toggle)
 
