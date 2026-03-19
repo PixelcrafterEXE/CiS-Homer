@@ -288,14 +288,14 @@ class UI(tkk.Tk):
 
             # Balkenansicht
             self._frame_bar = tkk.Frame(self._tabview)
-            self._bar_fig = BarFigure(self._sensor.getRaw())
+            self._bar_fig = BarFigure(np.zeros(64))
             canvas_bar = FigureCanvasTkAgg(self._bar_fig, master=self._frame_bar)
             canvas_bar.draw()
             canvas_bar.get_tk_widget().pack(fill="both", expand=True)
             self._tabview.add(self._frame_bar, text="Balkenansicht")
 
             # Tabellenansicht
-            self._table_frame = TableFrame(self._tabview, self._sensor.getMap())
+            self._table_frame = TableFrame(self._tabview, np.full((9, 9), np.nan))
             self._tabview.add(self._table_frame, text="Tabellenansicht")
 
     def _rebuild_raster_fig(self) -> None:
@@ -308,7 +308,7 @@ class UI(tkk.Tk):
         auto_range = self._auto_range_toggle.value.get() if hasattr(self, '_auto_range_toggle') else False
         log_range = self._log_scale_toggle.value.get() if hasattr(self, '_log_scale_toggle') else True
         
-        self._raster_fig = RasterFigure(self._sensor.getMap(), autoRange=auto_range, logRange=log_range)
+        self._raster_fig = RasterFigure(np.full((9, 9), np.nan), autoRange=auto_range, logRange=log_range)
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._frame_raster_container)
         self._raster_canvas.draw()
         self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
