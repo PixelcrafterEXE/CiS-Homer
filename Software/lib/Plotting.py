@@ -10,6 +10,8 @@ class RasterFigure(Figure):
         kwargs.setdefault('figsize', (8, 6))
         super().__init__(*args, **kwargs)
         
+        self.autoRange = autoRange
+        self.logRange = logRange
         self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
         
         ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [15, 1]})
@@ -23,7 +25,7 @@ class RasterFigure(Figure):
         hi = float(valid_vals.max()) if autoRange and len(valid_vals) else 65535.0
 
         def make_cmap(lo, hi):
-            if logRange:
+            if self.logRange:
                 log_rng = np.log10(65535) - np.log10(1)
                 lo_n = (np.log10(max(lo, 1)) - np.log10(1)) / log_rng
                 hi_n = (np.log10(max(hi, 1)) - np.log10(1)) / log_rng
@@ -36,6 +38,8 @@ class RasterFigure(Figure):
             )
             cmap.set_bad('none')
             return cmap
+        
+        self.make_cmap = make_cmap
 
         norm = mcolors.LogNorm(vmin=1, vmax=65535, clip=True) if logRange else mcolors.Normalize(vmin=0, vmax=65535, clip=True)
 
@@ -104,7 +108,16 @@ class RasterFigure(Figure):
             self._connect_events(self)
 
     def update_data(self, data: np.ndarray) -> None:
-        self.im.set_data(data.astype(float))
+        data_float = data.astype(float)
+        self.im.set_data(data_float)
+        
+        if self.autoRange:
+            nan_mask = np.isnan(data_float)
+            valid_vals = data_float[~nan_mask]
+            lo = float(valid_vals.min()) if len(valid_vals) else (1.0 if self.logRange else 0.0)
+            hi = float(valid_vals.max()) if len(valid_vals) else 65535.0
+            self.im.set_cmap(self.make_cmap(lo, hi))
+            
         if hasattr(self, 'canvas') and self.canvas:
             self.canvas.draw_idle()
 

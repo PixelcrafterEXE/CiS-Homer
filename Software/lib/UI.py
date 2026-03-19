@@ -9,6 +9,7 @@ import numpy as np
 import lib.Sensor as Serial
 from lib.Sensor import Sensor
 from lib.Plotting import RasterFigure, BarFigure, TableFrame
+from lib.Config import getCFGKey, setCFGKey
 
 
 class Option(tkk.Frame):
@@ -44,6 +45,12 @@ class OptionButton(Option):
         button = tkk.Button(self, text=text, command=command, bootstyle="primary")
         button.grid(row=0, column=0, sticky="ew")
 
+class OptionLabel(Option):
+    def __init__(self, parent, text: str, foreground: str = "red", visibility: Callable[[], bool] | None = None) -> None:
+        super().__init__(parent, visibility=visibility)
+        label = tkk.Label(self, text=text, foreground=foreground)
+        label.grid(row=0, column=0, sticky="w")
+
 
 class OptionToggle(Option):
     def __init__(
@@ -53,14 +60,21 @@ class OptionToggle(Option):
         initial: bool = False,
         command: Callable[[bool], None] | None = None,
         visibility: Callable[[], bool] | None = None,
+        persistent: bool = False,
     ) -> None:
         super().__init__(parent, label, visibility=visibility)
+        self.persistent = persistent
+        self.config_key = f"toggle_{label.replace(' ', '_')}"
+        if self.persistent:
+            initial = getCFGKey(self.config_key, initial)
         self.value = tk.BooleanVar(value=initial)
 
         text = tkk.Label(self, text=label)
         text.grid(row=0, column=0, sticky="w")
 
         def _on_toggle() -> None:
+            if self.persistent:
+                setCFGKey(self.config_key, self.value.get())
             if command:
                 command(self.value.get())
 
@@ -77,19 +91,27 @@ class OptionDropdown(Option):
         initial: str | None = None,
         command: Callable[[str], None] | None = None,
         visibility: Callable[[], bool] | None = None,
+        persistent: bool = False,
     ) -> None:
         super().__init__(parent, label, visibility=visibility)
+        self.persistent = persistent
+        self.config_key = f"dropdown_{label.replace(' ', '_')}"
 
         text = tkk.Label(self, text=label)
         text.grid(row=0, column=0, sticky="w", padx=(0, 10))
 
         selected = initial if initial is not None else (values[0] if values else "")
+        if self.persistent:
+            selected = getCFGKey(self.config_key, selected)
+            
         self.value = tk.StringVar(value=selected)
 
         dropdown = tkk.Combobox(self, textvariable=self.value, values=list(values), state="readonly")
         dropdown.grid(row=0, column=1, sticky="ew")
 
         def _on_select(_event=None) -> None:
+            if self.persistent:
+                setCFGKey(self.config_key, self.value.get())
             if command:
                 command(self.value.get())
 
@@ -150,11 +172,13 @@ class OptionSection(Option):
 class UI(tkk.Tk):
     def __init__(self) -> None:
         super().__init__()
+        #delete window on close button
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
         self._sensor: Sensor | None = None
         self._raster_fig: RasterFigure | None = None
         self._bar_fig: BarFigure | None = None
         self._measurement_rate = 100
+        self._fetching_data = False
         try:
             self._sensor = Sensor()
         except RuntimeError:
@@ -175,26 +199,37 @@ class UI(tkk.Tk):
         if sensor_active != hasattr(self, '_tabview'):
             self._build_left_panel()
 
-        if not sensor_active or not hasattr(self, '_tabview'):
+        if not sensor_active or not hasattr(self, '_tabview') or self._fetching_data:
             return
-            
-        try:
-            current_tab = self._tabview.index("current")
-            if current_tab == 0 and self._raster_fig:
-                self._raster_fig.update_data(self._sensor.getMap())
-            elif current_tab == 1 and self._bar_fig:
-                self._bar_fig.update_data(self._sensor.getRaw())
-            elif current_tab == 2 and getattr(self, '_table_frame', None):
-                self._table_frame.update_data(self._sensor.getMap())
-        except Exception as e:
-            print(f"Error updating measurement: {e}")
-            if self._sensor and self._sensor.ser:
-                try:
-                    self._sensor.ser.close()
-                except Exception:
-                    pass
-                self._sensor.ser = None
-            self._build_left_panel()
+
+        self._fetching_data = True
+
+        def fetch_and_update():
+            try:
+                current_tab = self._tabview.index("current")
+                if current_tab == 0 and getattr(self, '_raster_fig', None):
+                    data = self._sensor.getMap()
+                    self.after(0, lambda: self._raster_fig.update_data(data))
+                elif current_tab == 1 and getattr(self, '_bar_fig', None):
+                    data = self._sensor.getRaw()
+                    self.after(0, lambda: self._bar_fig.update_data(data))
+                elif current_tab == 2 and getattr(self, '_table_frame', None):
+                    data = self._sensor.getMap()
+                    self.after(0, lambda: self._table_frame.update_data(data))
+            except Exception as e:
+                print(f"Error updating measurement: {e}")
+                if self._sensor and self._sensor.ser:
+                    try:
+                        self._sensor.ser.close()
+                    except Exception:
+                        pass
+                    self._sensor.ser = None
+                self.after(0, self._build_left_panel)
+            finally:
+                self._fetching_data = False
+                
+        import threading
+        threading.Thread(target=fetch_and_update, daemon=True).start()
 
     def _update_loop(self) -> None:
         changed = False
@@ -231,8 +266,8 @@ class UI(tkk.Tk):
         self._main.columnconfigure(1, weight=3, uniform="group1")
         self._main.rowconfigure(0, weight=1)
 
-        self._build_left_panel()
         self._build_right_panel()
+        self._build_left_panel()
 
     def _build_left_panel(self) -> None:
         if hasattr(self, '_left_panel'):
@@ -259,14 +294,14 @@ class UI(tkk.Tk):
 
             # Balkenansicht
             self._frame_bar = tkk.Frame(self._tabview)
-            self._bar_fig = BarFigure(self._sensor.getRaw())
+            self._bar_fig = BarFigure(np.zeros(64))
             canvas_bar = FigureCanvasTkAgg(self._bar_fig, master=self._frame_bar)
             canvas_bar.draw()
             canvas_bar.get_tk_widget().pack(fill="both", expand=True)
             self._tabview.add(self._frame_bar, text="Balkenansicht")
 
             # Tabellenansicht
-            self._table_frame = TableFrame(self._tabview, self._sensor.getMap())
+            self._table_frame = TableFrame(self._tabview, np.full((9, 9), np.nan))
             self._tabview.add(self._table_frame, text="Tabellenansicht")
 
     def _rebuild_raster_fig(self) -> None:
@@ -279,7 +314,7 @@ class UI(tkk.Tk):
         auto_range = self._auto_range_toggle.value.get() if hasattr(self, '_auto_range_toggle') else False
         log_range = self._log_scale_toggle.value.get() if hasattr(self, '_log_scale_toggle') else True
         
-        self._raster_fig = RasterFigure(self._sensor.getMap(), autoRange=auto_range, logRange=log_range)
+        self._raster_fig = RasterFigure(np.full((9, 9), np.nan), autoRange=auto_range, logRange=log_range)
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._frame_raster_container)
         self._raster_canvas.draw()
         self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
@@ -305,7 +340,8 @@ class UI(tkk.Tk):
                 "Serieller Port",
                 ["auto"] + [port.device for port in Serial.listPorts()], #todo: show device name
                 "auto",
-                command=lambda port: self._sensor.setPort(port) if self._sensor else None
+                command=lambda port: self._sensor.setPort(port) if self._sensor else None,
+                persistent=True
             )
         )
         serial_section.add_option(
@@ -314,14 +350,15 @@ class UI(tkk.Tk):
                 "Baud-Rate", 
                 ["9600", "19200", "38400", "57600", "115200"],
                 "115200",
-                command=lambda baud: self._sensor.setBaud(int(baud)) if self._sensor else None
+                command=lambda baud: self._sensor.setBaud(int(baud)) if self._sensor else None,
+                persistent=True
             )
         )
 
         messung_section = OptionSection(self._options_container, "Messung")
         self._add_option(messung_section)
 
-        self._stream_toggle = OptionToggle(messung_section.content_frame, "Messdaten Streamen", initial=True)
+        self._stream_toggle = OptionToggle(messung_section.content_frame, "Messdaten Streamen", initial=True, persistent=True)
         messung_section.add_option(self._stream_toggle)
 
         def set_freq(freq_str: str) -> None:
@@ -330,11 +367,12 @@ class UI(tkk.Tk):
         messung_section.add_option(
             OptionDropdown(
                 messung_section.content_frame,
-                "Messfrequenz (ms)",
+                "Messintervall (ms)",
                 ["50", "100", "200", "500", "1000", "2000"],
                 "100",
                 command=set_freq,
-                visibility=lambda: self._stream_toggle.value.get()
+                visibility=lambda: self._stream_toggle.value.get(),
+                persistent=True
             )
         )
 
@@ -354,7 +392,8 @@ class UI(tkk.Tk):
             display_section.content_frame, 
             "Autom. Range", 
             initial=False,
-            command=lambda _: self._rebuild_raster_fig()
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True
         )
         display_section.add_option(self._auto_range_toggle)
         
@@ -362,19 +401,33 @@ class UI(tkk.Tk):
             display_section.content_frame, 
             "Log. Maßstab", 
             initial=True,
-            command=lambda _: self._rebuild_raster_fig()
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True
         )
         display_section.add_option(self._log_scale_toggle)
 
         export_section = OptionSection(self._options_container, "Exportieren")
         self._add_option(export_section)
+        
+        from lib.Export import is_usb_available, export_data
+        
+        btn = OptionButton(
+            export_section.content_frame, 
+            "Export CSV to USB", 
+            command=lambda: export_data(self._sensor),
+            visibility=is_usb_available
+        )
+        export_section.add_option(btn)
+        
+        lbl = OptionLabel(
+            export_section.content_frame,
+            text="Kein USB Speicher erkannt",
+            foreground="red",
+            visibility=lambda: not is_usb_available()
+        )
+        export_section.add_option(lbl)
 
 
     def _add_option(self, option: Option) -> None:
         self._options.append(option)
         option.add_to(self._options_container)
-
-
-    
-
-
