@@ -266,8 +266,8 @@ class UI(tkk.Tk):
         self._main.columnconfigure(1, weight=3, uniform="group1")
         self._main.rowconfigure(0, weight=1)
 
-        self._build_left_panel()
         self._build_right_panel()
+        self._build_left_panel()
 
     def _build_left_panel(self) -> None:
         if hasattr(self, '_left_panel'):
@@ -431,8 +431,3 @@ class UI(tkk.Tk):
     def _add_option(self, option: Option) -> None:
         self._options.append(option)
         option.add_to(self._options_container)
-
-
-    
-
-
