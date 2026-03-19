@@ -9,7 +9,7 @@ import numpy as np
 import lib.Sensor as Serial
 from lib.Sensor import Sensor
 from lib.Plotting import RasterFigure, BarFigure, TableFrame
-from lib.Storage import getCFGKey, setCFGKey
+from lib.Config import getCFGKey, setCFGKey
 
 
 class Option(tkk.Frame):
@@ -44,6 +44,12 @@ class OptionButton(Option):
         super().__init__(parent, visibility=visibility)
         button = tkk.Button(self, text=text, command=command, bootstyle="primary")
         button.grid(row=0, column=0, sticky="ew")
+
+class OptionLabel(Option):
+    def __init__(self, parent, text: str, foreground: str = "red", visibility: Callable[[], bool] | None = None) -> None:
+        super().__init__(parent, visibility=visibility)
+        label = tkk.Label(self, text=text, foreground=foreground)
+        label.grid(row=0, column=0, sticky="w")
 
 
 class OptionToggle(Option):
@@ -402,6 +408,24 @@ class UI(tkk.Tk):
 
         export_section = OptionSection(self._options_container, "Exportieren")
         self._add_option(export_section)
+        
+        from lib.Export import is_usb_available, export_data
+        
+        btn = OptionButton(
+            export_section.content_frame, 
+            "Export CSV to USB", 
+            command=lambda: export_data(self._sensor),
+            visibility=is_usb_available
+        )
+        export_section.add_option(btn)
+        
+        lbl = OptionLabel(
+            export_section.content_frame,
+            text="Kein USB Speicher erkannt",
+            foreground="red",
+            visibility=lambda: not is_usb_available()
+        )
+        export_section.add_option(lbl)
 
 
     def _add_option(self, option: Option) -> None:
