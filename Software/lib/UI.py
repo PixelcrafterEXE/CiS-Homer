@@ -1,6 +1,4 @@
 from __future__ import annotations
-import tkinter as tk
-from typing import Callable, Sequence
 
 import ttkbootstrap as tkk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg

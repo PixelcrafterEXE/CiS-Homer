@@ -5,7 +5,6 @@ import time
 import threading
 
 import numpy as np
-from matplotlib.figure import Figure
 
 positions = [
     (2, 0),   # 1
