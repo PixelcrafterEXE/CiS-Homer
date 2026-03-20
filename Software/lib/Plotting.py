@@ -65,18 +65,30 @@ class RasterFigure(Figure):
 
         if not autoRange:
             self.state = {'drag': None, 'lo': lo, 'hi': hi}
-            self.lo_line = cax.axhline(lo, color='cyan', lw=1.5)
-            self.hi_line = cax.axhline(hi, color='cyan', lw=1.5)
+            y_trans = cax.get_yaxis_transform()
+            # Draw lines with circular markers extending to the left (x=0) 
+            self.lo_line, = cax.plot([-0.2, 1], [lo, lo], color='#007bff', lw=2, marker='o', markersize=15, markevery=[0], clip_on=False, transform=y_trans)
+            self.hi_line, = cax.plot([-0.2, 1], [hi, hi], color='#007bff', lw=2, marker='o', markersize=15, markevery=[0], clip_on=False, transform=y_trans)
             self.vmin_cb = 1 if logRange else 0
 
             def on_press(event):
-                if event.inaxes != cax or event.ydata is None: return
-                y = event.ydata
-                self.state['drag'] = 'lo' if abs(y - self.state['lo']) <= abs(y - self.state['hi']) else 'hi'
+                if event.y is None or event.x is None: return
+                
+                # Check horizontal coordinate in cax axes space
+                x_axes, _ = cax.transAxes.inverted().transform((event.x, event.y))
+                if x_axes < -2.0 or x_axes > 2.0: return
+                
+                # Get vertical coordinate in cax data space
+                _, y_data = cax.transData.inverted().transform((event.x, event.y))
+                
+                self.state['drag'] = 'lo' if abs(y_data - self.state['lo']) <= abs(y_data - self.state['hi']) else 'hi'
 
             def on_motion(event):
-                if not self.state['drag'] or event.inaxes != cax or event.ydata is None: return
-                y = float(np.clip(event.ydata, self.vmin_cb, 65535))
+                if not self.state['drag'] or event.y is None: return
+                
+                _, y_data = cax.transData.inverted().transform((event.x, event.y))
+                y = float(np.clip(y_data, self.vmin_cb, 65535))
+                
                 if self.state['drag'] == 'lo':
                     self.state['lo'] = min(y, self.state['hi'] * 0.999 if logRange else self.state['hi'] - 1)
                     self.lo_line.set_ydata([self.state['lo']] * 2)
@@ -89,7 +101,6 @@ class RasterFigure(Figure):
             def on_release(event): 
                 self.state['drag'] = None
 
-            # We must assign these later or when the figure is added to a canvas.
             self._on_press = on_press
             self._on_motion = on_motion
             self._on_release = on_release
