@@ -215,7 +215,8 @@ class UI(tkk.Tk):
                     self.after(0, lambda: self._bar_fig.update_data(data))
                 elif current_tab == 2 and getattr(self, '_table_frame', None):
                     data = self._sensor.getMap()
-                    self.after(0, lambda: self._table_frame.update_data(data))
+                    is_4in = self._4inch_toggle.value.get() if hasattr(self, '_4inch_toggle') else False
+                    self.after(0, lambda d=data, i=is_4in: self._table_frame.update_data(d, i))
             except Exception as e:
                 print(f"Error updating measurement: {e}")
                 if self._sensor and self._sensor.ser:
@@ -301,7 +302,8 @@ class UI(tkk.Tk):
             self._tabview.add(self._frame_bar, text="Balkenansicht")
 
             # Tabellenansicht
-            self._table_frame = TableFrame(self._tabview, np.full((9, 9), np.nan))
+            is_4in = self._4inch_toggle.value.get() if hasattr(self, '_4inch_toggle') else False
+            self._table_frame = TableFrame(self._tabview, np.full((9, 9), np.nan), is_4in=is_4in)
             self._tabview.add(self._table_frame, text="Tabellenansicht")
 
     def _rebuild_raster_fig(self) -> None:
@@ -319,6 +321,12 @@ class UI(tkk.Tk):
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._frame_raster_container)
         self._raster_canvas.draw()
         self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
+
+        if hasattr(self, '_table_frame'):
+            self._table_frame.update_data(np.full((9, 9), np.nan), is_4in=is_4in)
+
+        if hasattr(self, '_stream_toggle') and not self._stream_toggle.value.get():
+            self._update_measurement()
 
     def _build_right_panel(self) -> None:
         self._right_panel = tkk.Frame(self._main, padding=(0, 10, 10, 10))

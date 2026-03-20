@@ -173,27 +173,41 @@ class BarFigure(Figure):
             self.canvas.draw_idle()
 
 class TableFrame(tkk.Frame):
-    def __init__(self, parent, data: np.ndarray, *args, **kwargs):
+    def __init__(self, parent, data: np.ndarray, is_4in: bool = False, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.configure(padding=10)
         self._table_vars = []
-        for i in range(9):
-            row_vars = []
-            for j in range(9):
-                var = tk.StringVar(value="")
-                val = data[i, j]
-                if not np.isnan(val):
-                    var.set(str(int(val)))
-                lbl = tkk.Label(self, textvariable=var, anchor="center", borderwidth=1, relief="solid")
-                lbl.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
-                self.rowconfigure(i, weight=1)
-                self.columnconfigure(j, weight=1)
-                row_vars.append(var)
-            self._table_vars.append(row_vars)
+        self._current_4in = None
+        self.update_data(data, is_4in)
 
-    def update_data(self, data: np.ndarray) -> None:
-        for i in range(9):
-            for j in range(9):
+    def update_data(self, data: np.ndarray, is_4in: bool = False) -> None:
+        if getattr(self, '_current_4in', None) != is_4in:
+            for widget in self.winfo_children():
+                widget.destroy()
+            self._table_vars = []
+            self._current_4in = is_4in
+            
+            rows, cols = (7, 7) if is_4in else (9, 9)
+            for i in range(rows):
+                self.rowconfigure(i, weight=1)
+            for j in range(cols):
+                self.columnconfigure(j, weight=1)
+                
+            for i in range(rows):
+                row_vars = []
+                for j in range(cols):
+                    var = tk.StringVar(value="")
+                    lbl = tkk.Label(self, textvariable=var, anchor="center", borderwidth=1, relief="solid")
+                    lbl.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
+                    row_vars.append(var)
+                self._table_vars.append(row_vars)
+
+        if is_4in and data.shape == (9, 9):
+            data = data[1:8, 1:8]
+            
+        rows, cols = data.shape
+        for i in range(min(rows, len(self._table_vars))):
+            for j in range(min(cols, len(self._table_vars[i]))):
                 val = data[i, j]
                 if np.isnan(val):
                     self._table_vars[i][j].set("")
