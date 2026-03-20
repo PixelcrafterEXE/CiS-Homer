@@ -6,15 +6,19 @@ import tkinter as tk
 import ttkbootstrap as tkk
 
 class RasterFigure(Figure):
-    def __init__(self, data: np.ndarray, autoRange: bool = False, logRange: bool = True, *args, **kwargs):
+    def __init__(self, data: np.ndarray, autoRange: bool = False, logRange: bool = True, is_4in: bool = False, *args, **kwargs):
         kwargs.setdefault('figsize', (8, 6))
         super().__init__(*args, **kwargs)
         
         self.autoRange = autoRange
         self.logRange = logRange
+        self.is_4in = is_4in
         self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
         
         ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [15, 1]})
+        
+        if self.is_4in and data.shape == (9, 9):
+            data = data[1:8, 1:8]
         
         data = data.astype(float)
         rows, cols = data.shape
@@ -61,18 +65,30 @@ class RasterFigure(Figure):
 
         if not autoRange:
             self.state = {'drag': None, 'lo': lo, 'hi': hi}
-            self.lo_line = cax.axhline(lo, color='cyan', lw=1.5)
-            self.hi_line = cax.axhline(hi, color='cyan', lw=1.5)
+            y_trans = cax.get_yaxis_transform()
+            # Draw lines with circular markers extending to the left (x=0) 
+            self.lo_line, = cax.plot([-0.2, 1], [lo, lo], color='#007bff', lw=2, marker='o', markersize=15, markevery=[0], clip_on=False, transform=y_trans)
+            self.hi_line, = cax.plot([-0.2, 1], [hi, hi], color='#007bff', lw=2, marker='o', markersize=15, markevery=[0], clip_on=False, transform=y_trans)
             self.vmin_cb = 1 if logRange else 0
 
             def on_press(event):
-                if event.inaxes != cax or event.ydata is None: return
-                y = event.ydata
-                self.state['drag'] = 'lo' if abs(y - self.state['lo']) <= abs(y - self.state['hi']) else 'hi'
+                if event.y is None or event.x is None: return
+                
+                # Check horizontal coordinate in cax axes space
+                x_axes, _ = cax.transAxes.inverted().transform((event.x, event.y))
+                if x_axes < -2.0 or x_axes > 2.0: return
+                
+                # Get vertical coordinate in cax data space
+                _, y_data = cax.transData.inverted().transform((event.x, event.y))
+                
+                self.state['drag'] = 'lo' if abs(y_data - self.state['lo']) <= abs(y_data - self.state['hi']) else 'hi'
 
             def on_motion(event):
-                if not self.state['drag'] or event.inaxes != cax or event.ydata is None: return
-                y = float(np.clip(event.ydata, self.vmin_cb, 65535))
+                if not self.state['drag'] or event.y is None: return
+                
+                _, y_data = cax.transData.inverted().transform((event.x, event.y))
+                y = float(np.clip(y_data, self.vmin_cb, 65535))
+                
                 if self.state['drag'] == 'lo':
                     self.state['lo'] = min(y, self.state['hi'] * 0.999 if logRange else self.state['hi'] - 1)
                     self.lo_line.set_ydata([self.state['lo']] * 2)
@@ -85,7 +101,6 @@ class RasterFigure(Figure):
             def on_release(event): 
                 self.state['drag'] = None
 
-            # We must assign these later or when the figure is added to a canvas.
             self._on_press = on_press
             self._on_motion = on_motion
             self._on_release = on_release
@@ -108,6 +123,9 @@ class RasterFigure(Figure):
             self._connect_events(self)
 
     def update_data(self, data: np.ndarray) -> None:
+        if getattr(self, 'is_4in', False) and data.shape == (9, 9):
+            data = data[1:8, 1:8]
+            
         data_float = data.astype(float)
         self.im.set_data(data_float)
         
@@ -166,27 +184,41 @@ class BarFigure(Figure):
             self.canvas.draw_idle()
 
 class TableFrame(tkk.Frame):
-    def __init__(self, parent, data: np.ndarray, *args, **kwargs):
+    def __init__(self, parent, data: np.ndarray, is_4in: bool = False, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.configure(padding=10)
         self._table_vars = []
-        for i in range(9):
-            row_vars = []
-            for j in range(9):
-                var = tk.StringVar(value="")
-                val = data[i, j]
-                if not np.isnan(val):
-                    var.set(str(int(val)))
-                lbl = tkk.Label(self, textvariable=var, anchor="center", borderwidth=1, relief="solid")
-                lbl.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
-                self.rowconfigure(i, weight=1)
-                self.columnconfigure(j, weight=1)
-                row_vars.append(var)
-            self._table_vars.append(row_vars)
+        self._current_4in = None
+        self.update_data(data, is_4in)
 
-    def update_data(self, data: np.ndarray) -> None:
-        for i in range(9):
-            for j in range(9):
+    def update_data(self, data: np.ndarray, is_4in: bool = False) -> None:
+        if getattr(self, '_current_4in', None) != is_4in:
+            for widget in self.winfo_children():
+                widget.destroy()
+            self._table_vars = []
+            self._current_4in = is_4in
+            
+            rows, cols = (7, 7) if is_4in else (9, 9)
+            for i in range(rows):
+                self.rowconfigure(i, weight=1)
+            for j in range(cols):
+                self.columnconfigure(j, weight=1)
+                
+            for i in range(rows):
+                row_vars = []
+                for j in range(cols):
+                    var = tk.StringVar(value="")
+                    lbl = tkk.Label(self, textvariable=var, anchor="center", borderwidth=1, relief="solid")
+                    lbl.grid(row=i, column=j, sticky="nsew", padx=1, pady=1)
+                    row_vars.append(var)
+                self._table_vars.append(row_vars)
+
+        if is_4in and data.shape == (9, 9):
+            data = data[1:8, 1:8]
+            
+        rows, cols = data.shape
+        for i in range(min(rows, len(self._table_vars))):
+            for j in range(min(cols, len(self._table_vars[i]))):
                 val = data[i, j]
                 if np.isnan(val):
                     self._table_vars[i][j].set("")
