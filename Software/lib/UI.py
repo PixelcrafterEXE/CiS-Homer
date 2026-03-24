@@ -47,15 +47,15 @@ class UI(tkk.Tk):
         def fetch_and_update():
             try:
                 current_tab = self._tabview.index("current")
-                is_calibrated = self._calibrated_toggle.value.get() if hasattr(self, '_calibrated_toggle') else False
+                is_raw = self._raw_data_toggle.value.get() if hasattr(self, '_raw_data_toggle') else False
                 if current_tab == 0 and getattr(self, '_raster_fig', None):
-                    data = self._sensor.getMap(calibrated=is_calibrated)
+                    data = self._sensor.getMap(calibrated=not is_raw)
                     self.after(0, lambda: self._raster_fig.update_data(data))
                 elif current_tab == 1 and getattr(self, '_bar_fig', None):
-                    data = self._sensor.getCalibrated() if is_calibrated else self._sensor.getRaw()
+                    data = self._sensor.getRaw() if is_raw else self._sensor.getCalibrated()
                     self.after(0, lambda: self._bar_fig.update_data(data))
                 elif current_tab == 2 and getattr(self, '_table_frame', None):
-                    data = self._sensor.getMap(calibrated=is_calibrated)
+                    data = self._sensor.getMap(calibrated=not is_raw)
                     is_4in = self._4inch_toggle.value.get() if hasattr(self, '_4inch_toggle') else False
                     self.after(0, lambda d=data, i=is_4in: self._table_frame.update_data(d, i))
             except Exception as e:
@@ -99,7 +99,6 @@ class UI(tkk.Tk):
     def buildUI(self) -> None:
         self.title("CiS HomeRPI")
         #self.attributes("-fullscreen", True)
-        #todo: disable alt+tab, alt+f4, ctrl+alt+del, etc. to prevent user from exiting the app or switching to another app
 
         # Container roots for left and right panels 
         self._main = tkk.Frame(self)
@@ -238,15 +237,6 @@ class UI(tkk.Tk):
         display_section = OptionSection(self._options_container, "Anzeige")
         self._add_option(display_section)
         
-        self._calibrated_toggle = OptionToggle(
-            display_section.content_frame, 
-            "Kalibrierte Daten", 
-            initial=False,
-            command=lambda _: self._rebuild_raster_fig(),
-            persistent=True
-        )
-        display_section.add_option(self._calibrated_toggle)
-        
         self._auto_range_toggle = OptionToggle(
             display_section.content_frame, 
             "Autom. Range", 
@@ -298,6 +288,16 @@ class UI(tkk.Tk):
         calibrate_section = OptionSection(self._options_container, "Kalibrierung")
         self._add_option(calibrate_section)
 
+        self._raw_data_toggle = OptionToggle(
+            calibrate_section.content_frame, 
+            "Rohdaten anzeigen", 
+            initial=False,
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True
+        )
+        calibrate_section.add_option(self._raw_data_toggle)
+
+        
 
     def _add_option(self, option: Option) -> None:
         self._options.append(option)
