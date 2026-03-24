@@ -265,9 +265,9 @@ class Sensor:
             raise RuntimeError(f"Failed to read calibration data, received {len(data)}/128 bytes")
         return bytes(data)
 
-    def getMap(self) -> np.ndarray:
+    def getMap(self, calibrated: bool = False) -> np.ndarray:
         '''returns the latest sensor frame mapped to a 9x9 grid.'''
-        raw = self.getRaw()
+        raw = self.getCalibrated() if calibrated else self.getRaw()
         array = np.full((9, 9), np.nan)
         for i, pos in enumerate(positions):
             if pos is not None:

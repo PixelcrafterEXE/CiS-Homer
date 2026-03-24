@@ -47,14 +47,15 @@ class UI(tkk.Tk):
         def fetch_and_update():
             try:
                 current_tab = self._tabview.index("current")
+                is_calibrated = self._calibrated_toggle.value.get() if hasattr(self, '_calibrated_toggle') else False
                 if current_tab == 0 and getattr(self, '_raster_fig', None):
-                    data = self._sensor.getMap()
+                    data = self._sensor.getMap(calibrated=is_calibrated)
                     self.after(0, lambda: self._raster_fig.update_data(data))
                 elif current_tab == 1 and getattr(self, '_bar_fig', None):
-                    data = self._sensor.getRaw()
+                    data = self._sensor.getCalibrated() if is_calibrated else self._sensor.getRaw()
                     self.after(0, lambda: self._bar_fig.update_data(data))
                 elif current_tab == 2 and getattr(self, '_table_frame', None):
-                    data = self._sensor.getMap()
+                    data = self._sensor.getMap(calibrated=is_calibrated)
                     is_4in = self._4inch_toggle.value.get() if hasattr(self, '_4inch_toggle') else False
                     self.after(0, lambda d=data, i=is_4in: self._table_frame.update_data(d, i))
             except Exception as e:
@@ -237,6 +238,15 @@ class UI(tkk.Tk):
         display_section = OptionSection(self._options_container, "Anzeige")
         self._add_option(display_section)
         
+        self._calibrated_toggle = OptionToggle(
+            display_section.content_frame, 
+            "Kalibrierte Daten", 
+            initial=False,
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True
+        )
+        display_section.add_option(self._calibrated_toggle)
+        
         self._auto_range_toggle = OptionToggle(
             display_section.content_frame, 
             "Autom. Range", 
@@ -284,6 +294,9 @@ class UI(tkk.Tk):
             visibility=lambda: not is_usb_available()
         )
         export_section.add_option(lbl)
+
+        calibrate_section = OptionSection(self._options_container, "Kalibrierung")
+        self._add_option(calibrate_section)
 
 
     def _add_option(self, option: Option) -> None:
