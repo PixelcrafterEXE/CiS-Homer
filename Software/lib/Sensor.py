@@ -199,6 +199,9 @@ class Sensor:
                     if 1 <= idx <= 64:
                         values[idx] = val
 
+            ser.write(b"x\r")
+            ser.flush()
+
             if len(values) != 64:
                 missing = [i for i in range(1, 65) if i not in values]
                 raise ValueError(f"Incomplete sensor frame, missing channels: {missing}")
