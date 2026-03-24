@@ -163,15 +163,15 @@ class Sensor:
             self._timer = threading.Timer(0.1, self._pollSerial)
             self._timer.start()
     
-    def getRaw(self) -> np.ndarray:
-        '''requests one raw frame of sensor data and returns it as a numpy array of shape (64,) with dtype uint16.'''
+    def _read_64_channels(self, command: bytes) -> np.ndarray:
+        '''requests one frame of 64 channels data and returns it as a numpy array with dtype uint16.'''
         ser = self.ser
         if ser is None or not ser.is_open:
             raise RuntimeError("Serial connection is not open.")
 
-        # Discard stale bytes and request one raw frame.
+        # Discard stale bytes and request one frame.
         ser.reset_input_buffer()
-        ser.write(b"r")
+        ser.write(command)
         ser.flush()
 
         # Parse tokens of the form "<channel>:<value>" until all 64 channels are available.
@@ -206,6 +206,61 @@ class Sensor:
             return np.array([values[i] for i in range(1, 65)], dtype=np.uint16)
         except Exception as e:
             raise RuntimeError(f"Failed to read sensor data: {e}")
+
+    def getRaw(self) -> np.ndarray:
+        '''ADC Rohwerte auslesen für alle FD Kanäle (r)'''
+        return self._read_64_channels(b"r")
+
+    def getCalibrated(self) -> np.ndarray:
+        '''ADC Rohwerte abzüglich Kalibrierwerte (m)'''
+        return self._read_64_channels(b"m")
+
+    def getOffset(self) -> np.ndarray:
+        '''ADC Rohwerte abzüglich Offsetwerte (o)'''
+        return self._read_64_channels(b"o")
+
+    def measureOffset(self) -> None:
+        '''Offsetwerte für 64 Kanäle messen und in EEProm speichern (d)'''
+        if self.ser is None or not self.ser.is_open:
+            raise RuntimeError("Serial connection is not open.")
+        self.ser.write(b"d")
+        self.ser.flush()
+
+    def stopMeasurement(self) -> None:
+        '''Dauermessung stoppen (x)'''
+        if self.ser is None or not self.ser.is_open:
+            raise RuntimeError("Serial connection is not open.")
+        self.ser.write(b"x\r")
+        self.ser.flush()
+
+    def writeCalibration(self, data: bytes) -> None:
+        '''Kalibrierwerte in EEprom speichern (a)'''
+        if self.ser is None or not self.ser.is_open:
+            raise RuntimeError("Serial connection is not open.")
+        if len(data) != 128:
+            raise ValueError("Calibration data must be exactly 128 bytes (2x 64 bytes)")
+        self.ser.write(b"a")
+        self.ser.write(data)
+        self.ser.flush()
+
+    def readCalibration(self) -> bytes:
+        '''Kalibrierwerte auslesen (k)'''
+        if self.ser is None or not self.ser.is_open:
+            raise RuntimeError("Serial connection is not open.")
+        self.ser.reset_input_buffer()
+        self.ser.write(b"k")
+        self.ser.flush()
+        # Expect 128 bytes sent back
+        deadline = time.monotonic() + 3.0
+        data = bytearray()
+        while len(data) < 128 and time.monotonic() < deadline:
+            chunk = self.ser.read(min(self.ser.in_waiting or 1, 128 - len(data)))
+            if chunk:
+                data.extend(chunk)
+                
+        if len(data) != 128:
+            raise RuntimeError(f"Failed to read calibration data, received {len(data)}/128 bytes")
+        return bytes(data)
 
     def getMap(self) -> np.ndarray:
         '''returns the latest sensor frame mapped to a 9x9 grid.'''
