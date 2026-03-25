@@ -6,7 +6,7 @@ import numpy as np
 
 import lib.Sensor as Serial
 from lib.Sensor import Sensor
-from lib.Plotting import RasterFigure, BarFigure, TableFrame
+from lib.Plotting import RasterFigure
 from lib.UI_Options import *
 
 class UI(tkk.Tk):
@@ -16,7 +16,6 @@ class UI(tkk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
         self._sensor: Sensor | None = None
         self._raster_fig: RasterFigure | None = None
-        self._bar_fig: BarFigure | None = None
         self._measurement_rate = 100
         self._fetching_data = False
         try:
@@ -49,15 +48,8 @@ class UI(tkk.Tk):
                 current_tab = self._tabview.index("current")
                 is_raw = self._raw_data_toggle.value.get() if hasattr(self, '_raw_data_toggle') else False
                 if current_tab == 0 and getattr(self, '_raster_fig', None):
-                    data = self._sensor.getMap(calibrated=not is_raw)
+                    data = self._sensor.getMap(calibrated=is_raw)
                     self.after(0, lambda: self._raster_fig.update_data(data))
-                elif current_tab == 1 and getattr(self, '_bar_fig', None):
-                    data = self._sensor.getRaw() if is_raw else self._sensor.getCalibrated()
-                    self.after(0, lambda: self._bar_fig.update_data(data))
-                elif current_tab == 2 and getattr(self, '_table_frame', None):
-                    data = self._sensor.getMap(calibrated=not is_raw)
-                    is_4in = self._4inch_toggle.value.get() if hasattr(self, '_4inch_toggle') else False
-                    self.after(0, lambda d=data, i=is_4in: self._table_frame.update_data(d, i))
             except Exception as e:
                 print(f"Error updating measurement: {e}")
                 if self._sensor and self._sensor.ser:
@@ -100,15 +92,17 @@ class UI(tkk.Tk):
         self.title("CiS HomeRPI")
         #self.attributes("-fullscreen", True)
 
-        # Container roots for left and right panels 
+        # Main container for left view and right overlay
         self._main = tkk.Frame(self)
         self._main.pack(fill="both", expand=True)
-        self._main.columnconfigure(0, weight=4, uniform="group1")
-        self._main.columnconfigure(1, weight=3, uniform="group1")
-        self._main.rowconfigure(0, weight=1)
 
-        self._build_right_panel()
+        self._right_panel_expanded = True
+
         self._build_left_panel()
+        self._build_right_panel()
+
+        # Keep floating controls correctly positioned and on top when resizing
+        self.bind("<Configure>", self._on_window_configure)
 
     def _build_left_panel(self) -> None:
         if hasattr(self, '_left_panel'):
@@ -116,7 +110,7 @@ class UI(tkk.Tk):
                 widget.destroy()
         else:
             self._left_panel = tkk.Frame(self._main, padding=10)
-            self._left_panel.grid(row=0, column=0, sticky="nsew")
+            self._left_panel.place(relx=0, rely=0, relwidth=1, relheight=1)
 
         if self._sensor is None or not self._sensor.ser or not self._sensor.ser.is_open:
             error_label = tkk.Label(self._left_panel, text="No sensor detected", foreground="red")
@@ -133,18 +127,13 @@ class UI(tkk.Tk):
             self._tabview.add(self._frame_raster_container, text="Raster view")
             self._rebuild_raster_fig()
 
-            # Bar view
-            self._frame_bar = tkk.Frame(self._tabview)
-            self._bar_fig = BarFigure(np.zeros(64))
-            canvas_bar = FigureCanvasTkAgg(self._bar_fig, master=self._frame_bar)
-            canvas_bar.draw()
-            canvas_bar.get_tk_widget().pack(fill="both", expand=True)
-            self._tabview.add(self._frame_bar, text="Bar view")
+            # Calibration tab (empty for now)
+            self._frame_calibration = tkk.Frame(self._tabview)
+            self._tabview.add(self._frame_calibration, text="Calibration")
 
-            # Table view
-            is_4in = self._4inch_toggle.value.get() if hasattr(self, '_4inch_toggle') else False
-            self._table_frame = TableFrame(self._tabview, np.full((9, 9), np.nan), is_4in=is_4in)
-            self._tabview.add(self._table_frame, text="Table view")
+            # Settings tab (empty for now)
+            self._frame_settings = tkk.Frame(self._tabview)
+            self._tabview.add(self._frame_settings, text="Settings")
 
     def _rebuild_raster_fig(self) -> None:
         if not self._sensor or not self._sensor.ser or not self._sensor.ser.is_open:
@@ -162,21 +151,25 @@ class UI(tkk.Tk):
         self._raster_canvas.draw()
         self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
 
-        if hasattr(self, '_table_frame'):
-            self._table_frame.update_data(np.full((9, 9), np.nan), is_4in=is_4in)
-
         if hasattr(self, '_stream_toggle') and not self._stream_toggle.value.get():
             self._update_measurement()
 
     def _build_right_panel(self) -> None:
-        self._right_panel = tkk.Frame(self._main, padding=(0, 10, 10, 10))
-        self._right_panel.grid(row=0, column=1, sticky="nsew")
-        self._right_panel.rowconfigure(0, weight=1)
-        self._right_panel.columnconfigure(0, weight=1)
+        self._right_panel = tkk.Frame(self._main, padding=(10, 10, 10, 10), relief="ridge", borderwidth=1)
+        self._right_panel.place(relx=1.0, rely=0.0, anchor="ne", relwidth=0.34, relheight=1.0)
+        self._right_panel.lift()
+
+        self._overlay_toggle_btn = tkk.Button(
+            self._main,
+            text="⮜ Hide options",
+            command=self._toggle_right_panel,
+            bootstyle="secondary"
+        )
+        self._position_overlay_toggle_button()
 
         from ttkbootstrap.scrolled import ScrolledFrame
         self._options_container = ScrolledFrame(self._right_panel, autohide=True, bootstyle="round")
-        self._options_container.grid(row=0, column=0, sticky="nsew")
+        self._options_container.pack(fill="both", expand=True)
 
         self._options: list[Option] = []
 
@@ -286,6 +279,28 @@ class UI(tkk.Tk):
             persistent=True
         )
         calibrate_section.add_option(self._raw_data_toggle)
+
+    def _toggle_right_panel(self) -> None:
+        self._right_panel_expanded = not self._right_panel_expanded
+
+        if self._right_panel_expanded:
+            self._right_panel.place(relx=1.0, rely=0.0, anchor="ne", relwidth=0.34, relheight=1.0)
+            self._right_panel.lift()
+            self._overlay_toggle_btn.configure(text="⮜ Hide options")
+        else:
+            self._right_panel.place_forget()
+            self._overlay_toggle_btn.configure(text="⮞ Show options")
+
+        self._position_overlay_toggle_button()
+
+    def _position_overlay_toggle_button(self) -> None:
+        # Keep a small inset so the button is never clipped by the right window edge.
+        self._overlay_toggle_btn.place(relx=1.0, x=-8, y=8, anchor="ne")
+        self._overlay_toggle_btn.lift()
+
+    def _on_window_configure(self, _event=None) -> None:
+        if hasattr(self, '_overlay_toggle_btn'):
+            self._position_overlay_toggle_button()
 
         
 
