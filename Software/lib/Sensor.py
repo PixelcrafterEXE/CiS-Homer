@@ -171,6 +171,7 @@ class Sensor:
 
         # Discard stale bytes and request one frame.
         ser.reset_input_buffer()
+        print(f"[SERIAL OUT] write: {command!r}")
         ser.write(command)
         ser.flush()
 
@@ -186,6 +187,7 @@ class Sensor:
                 if not chunk:
                     continue
 
+                print(f"[SERIAL IN] read: {chunk!r}")
                 text = remainder + chunk.decode("ascii", errors="ignore")
                 parts = re.split(r"[\r\n]+", text)
                 remainder = parts.pop() if parts else ""
@@ -204,6 +206,7 @@ class Sensor:
                 if 1 <= idx <= 64:
                     values[idx] = val
 
+            print(f"[SERIAL OUT] write: {b'x\r'!r}")
             ser.write(b"x\r")
             ser.flush()
 
