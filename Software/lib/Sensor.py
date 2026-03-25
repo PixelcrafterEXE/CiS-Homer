@@ -156,7 +156,6 @@ class Sensor:
                     print(f"Failed to connect to {device}: {e}")
         elif not self.ser.is_open:
             self.ser = None
-        #todo: disconnect detection, timeout, etc. to set self.ser = None if connection is lost
         
         #rerun after 100ms
         if self._running:
@@ -216,7 +215,6 @@ class Sensor:
 
     def getCalibrated(self) -> np.ndarray:
         '''ADC Rohwerte abzüglich Kalibrierwerte (m)'''
-        #calculating calibrated values on the mcu (m command) is not implemented according to spec. The return only contains channels 33..64
         return self._read_64_channels(b"m")
 
 
