@@ -124,7 +124,7 @@ class UI(tkk.Tk):
 
         # Raster view
         self._frame_raster_container = tkk.Frame(self._tabview)
-        self._tabview.add(self._frame_raster_container, text="Raster view")
+        self._tabview.add(self._frame_raster_container, text="Visualizer")
 
         self._raster_root = tkk.Frame(self._frame_raster_container)
         self._raster_root.pack(fill="both", expand=True)
