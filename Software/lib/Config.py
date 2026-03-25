@@ -1,24 +1,29 @@
 import json
-import os
+from pathlib import Path
 
-APP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-CONFIG_FILE = os.path.join(APP_DIR, "res", "config.json")
-COLOR_SCHEMES_FILE = os.path.join(APP_DIR, "res", "colors.json")
+APP_DIR = Path(__file__).resolve().parent.parent
+CONFIG_FILE = APP_DIR / "res" / "config.json"
+COLOR_SCHEMES_FILE = APP_DIR / "res" / "colors.json"
+
+
+def _read_json(path: Path):
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
 def _load_config():
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
+    return _read_json(CONFIG_FILE)
 
 def _save_config(config):
     try:
-        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=4, ensure_ascii=False)
+        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG_FILE.write_text(
+            json.dumps(config, indent=4, ensure_ascii=False),
+            encoding="utf-8",
+        )
     except Exception as e:
         print(f"Error saving config: {e}")
 
@@ -34,8 +39,7 @@ def setCFGKey(key: str, value):
 
 def getColorSchemes() -> dict[str, dict[str, str | list[str]]]:
     try:
-        with open(COLOR_SCHEMES_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = json.loads(COLOR_SCHEMES_FILE.read_text(encoding="utf-8"))
     except Exception as e:
         print(f"Error loading color schemes: {e}")
         return {}

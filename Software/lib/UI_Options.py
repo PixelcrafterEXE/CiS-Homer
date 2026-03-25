@@ -7,6 +7,10 @@ import ttkbootstrap as tkk
 from lib.Config import getCFGKey, setCFGKey
 
 
+def _config_key(prefix: str, label: str) -> str:
+    return f"{prefix}_{label.replace(' ', '_')}"
+
+
 class Option(tkk.Frame):
     def __init__(self, parent, label: str | None = None, visibility: Callable[[], bool] | None = None) -> None:
         super().__init__(parent, padding=10)
@@ -56,7 +60,7 @@ class OptionToggle(Option):
     ) -> None:
         super().__init__(parent, label, visibility=visibility)
         self.persistent = persistent
-        self.config_key = f"toggle_{label.replace(' ', '_')}"
+        self.config_key = _config_key("toggle", label)
         if self.persistent:
             initial = getCFGKey(self.config_key, initial)
         self.value = tk.BooleanVar(value=initial)
@@ -87,7 +91,7 @@ class OptionDropdown(Option):
     ) -> None:
         super().__init__(parent, label, visibility=visibility)
         self.persistent = persistent
-        self.config_key = f"dropdown_{label.replace(' ', '_')}"
+        self.config_key = _config_key("dropdown", label)
         self.columnconfigure(0, weight=1, uniform="option_dropdown")
         self.columnconfigure(1, weight=1, uniform="option_dropdown")
 
@@ -122,7 +126,7 @@ class OptionSection(Option):
     ) -> None:
         super().__init__(parent, label, visibility=visibility)
         self.persistent = persistent
-        self.config_key = f"section_{label.replace(' ', '_')}"
+        self.config_key = _config_key("section", label)
         self.configure(padding=0)
         self._children: list[Option] = []
         self._is_expanded = getCFGKey(self.config_key, True) if self.persistent else True

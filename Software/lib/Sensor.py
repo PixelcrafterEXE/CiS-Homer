@@ -76,7 +76,7 @@ positions = [
 
 def listPorts() -> list:
     '''gets all serial ports with attached devices'''
-    return [port for port in list_ports.comports()]
+    return list(list_ports.comports())
 
 class Sensor:
     def __init__(self, port: str = "auto", baud: int = 115200, device_id: str = "0403:6015"):
