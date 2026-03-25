@@ -2,7 +2,8 @@ from lib.UI import UI
 
 
 def main():
-    UI().mainloop()
+    ui = UI()
+    ui.mainloop()
 
 if __name__ == "__main__":
     main()

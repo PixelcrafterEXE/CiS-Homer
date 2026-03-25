@@ -27,16 +27,13 @@ class UI(tkk.Tk):
         self._update_loop()
         self._measurement_loop()
 
-    def _sensor_active(self) -> bool:
-        return bool(self._sensor and self._sensor.ser and self._sensor.ser.is_open)
-
     def _measurement_loop(self) -> None:
         if hasattr(self, '_stream_toggle') and self._stream_toggle.value.get():
             self._update_measurement()
         self.after(self._measurement_rate, self._measurement_loop)
 
     def _update_measurement(self) -> None:
-        sensor_active = self._sensor_active()
+        sensor_active = bool(self._sensor and self._sensor.ser and self._sensor.ser.is_open)
 
         # Rebuild layout if sensor connection state changed
         if sensor_active != getattr(self, '_ui_sensor_state', None):
@@ -119,8 +116,15 @@ class UI(tkk.Tk):
             self._left_panel = tkk.Frame(self._main, padding=10)
             self._left_panel.place(relx=0, rely=0, relwidth=1, relheight=1)
 
-        self._tabview = tkk.Notebook(self._left_panel)
-        self._tabview.pack(fill="both", expand=True)
+        if self._sensor is None or not self._sensor.ser or not self._sensor.ser.is_open:
+            error_label = tkk.Label(self._left_panel, text="No sensor detected", foreground="red")
+            error_label.pack(expand=True)
+            self._raster_canvas = None
+            if hasattr(self, '_tabview'):
+                delattr(self, '_tabview')
+        else:
+            self._tabview = tkk.Notebook(self._left_panel)
+            self._tabview.pack(fill="both", expand=True)
 
         # Raster view
         self._frame_raster_container = tkk.Frame(self._tabview)
@@ -232,7 +236,7 @@ class UI(tkk.Tk):
         self._ui_sensor_state = sensor_active
 
     def _rebuild_raster_fig(self) -> None:
-        if not self._sensor_active():
+        if not self._sensor or not self._sensor.ser or not self._sensor.ser.is_open:
             return
         
         if hasattr(self, '_raster_canvas') and self._raster_canvas is not None:
