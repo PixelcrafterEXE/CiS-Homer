@@ -14,6 +14,7 @@ class RasterFigure(Figure):
         self,
         data: np.ndarray,
         autoRange: bool = False,
+        rangeMode: str | None = None,
         logRange: bool = True,
         showValues: bool = False,
         waferDiameterMm: float = 150.0,
@@ -23,13 +24,19 @@ class RasterFigure(Figure):
         underColor: str = 'black',
         overColor: str = 'white',
         showOrientationHint: bool = True,
+        manualLo: float | None = None,
+        manualHi: float | None = None,
+        onManualRangeChange=None,
         *args,
         **kwargs,
     ):
         kwargs.setdefault('figsize', (8, 6))
         super().__init__(*args, **kwargs)
         
-        self.autoRange = autoRange
+        self.rangeMode = (rangeMode or ("auto" if autoRange else "manual")).lower()
+        if self.rangeMode not in ("auto", "manual", "max"):
+            self.rangeMode = "manual"
+        self.autoRange = self.rangeMode == "auto"
         self.logRange = logRange
         self.showValues = showValues
         self.waferDiameterMm = waferDiameterMm
@@ -41,6 +48,7 @@ class RasterFigure(Figure):
         self.underColor = underColor
         self.overColor = overColor
         self.showOrientationHint = showOrientationHint
+        self._on_manual_range_change = onManualRangeChange
         self._value_texts = []
         self._outline_circle = None
         self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
@@ -53,8 +61,20 @@ class RasterFigure(Figure):
         nan_mask = np.isnan(data)
         valid_vals = data[~nan_mask]
 
-        lo = float(valid_vals.min()) if autoRange and len(valid_vals) else (1.0 if logRange else 0.0)
-        hi = float(valid_vals.max()) if autoRange and len(valid_vals) else 65535.0
+        base_lo = 1.0 if logRange else 0.0
+        base_hi = 65535.0
+        eps = 1e-6
+
+        if self.rangeMode == "auto":
+            lo = float(valid_vals.min()) if len(valid_vals) else base_lo
+            hi = float(valid_vals.max()) if len(valid_vals) else base_hi
+        elif self.rangeMode == "max":
+            lo, hi = base_lo, base_hi
+        else:
+            lo = float(manualLo) if manualLo is not None else base_lo
+            hi = float(manualHi) if manualHi is not None else base_hi
+            lo = float(np.clip(lo, base_lo, base_hi - eps))
+            hi = float(np.clip(hi, lo + eps, base_hi))
 
         def make_cmap(lo, hi):
             if self.logRange:
@@ -63,7 +83,6 @@ class RasterFigure(Figure):
                 hi_n = (np.log10(max(hi, 1)) - np.log10(1)) / log_rng
             else:
                 lo_n, hi_n = lo / 65535.0, hi / 65535.0
-            eps = 1e-6
             lo_n = float(np.clip(lo_n, 0.0, 1.0 - eps))
             hi_n = float(np.clip(hi_n, lo_n + eps, 1.0))
 
@@ -134,7 +153,7 @@ class RasterFigure(Figure):
         if self.showValues:
             self._create_value_texts(data)
 
-        if not autoRange:
+        if self.rangeMode == "manual":
             self.state = {'drag': None, 'lo': lo, 'hi': hi}
             y_trans = cax.get_yaxis_transform()
             # Draw lines with circular markers extending to the left (x=0) 
@@ -166,6 +185,13 @@ class RasterFigure(Figure):
                 else:
                     self.state['hi'] = max(y, self.state['lo'] * 1.001 if logRange else self.state['lo'] + 1)
                     self.hi_line.set_ydata([self.state['hi']] * 2)
+
+                if self._on_manual_range_change:
+                    try:
+                        self._on_manual_range_change(self.state['lo'], self.state['hi'])
+                    except Exception:
+                        pass
+
                 self.im.set_cmap(make_cmap(self.state['lo'], self.state['hi']))
                 if self.showValues:
                     self._update_value_texts(np.asarray(self.im.get_array(), dtype=float))

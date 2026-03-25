@@ -8,7 +8,7 @@ import lib.Sensor as Serial
 from lib.Sensor import Sensor
 from lib.Plotting import RasterFigure
 from lib.UI_Options import *
-from lib.Config import getColorSchemes
+from lib.Config import getColorSchemes, getCFGKey, setCFGKey
 
 class UI(tkk.Tk):
     def __init__(self) -> None:
@@ -88,6 +88,10 @@ class UI(tkk.Tk):
             self._sensor.stop()
         self.quit()
         self.destroy()
+
+    def _store_manual_range(self, lo: float, hi: float) -> None:
+        setCFGKey("manual_range_lo", float(lo))
+        setCFGKey("manual_range_hi", float(hi))
 
     def buildUI(self) -> None:
         self.title("CiS HomeRPI")
@@ -229,7 +233,7 @@ class UI(tkk.Tk):
         if hasattr(self, '_raster_canvas') and self._raster_canvas is not None:
             self._raster_canvas.get_tk_widget().destroy()
 
-        auto_range = self._auto_range_toggle.value.get() if hasattr(self, '_auto_range_toggle') else False
+        range_mode = self._range_mode_dropdown.value.get() if hasattr(self, '_range_mode_dropdown') else "manual"
         log_range = self._log_scale_toggle.value.get() if hasattr(self, '_log_scale_toggle') else True
         show_values = self._show_values_toggle.value.get() if hasattr(self, '_show_values_toggle') else False
         wafer_dia = float(self._settings_wafer_dia.value.get()) if hasattr(self, '_settings_wafer_dia') else 150.0
@@ -246,10 +250,14 @@ class UI(tkk.Tk):
         else:
             under_color = color_scheme[0]
             over_color = color_scheme[-1]
+
+        manual_lo_default = 1.0 if log_range else 0.0
+        manual_lo = float(getCFGKey("manual_range_lo", manual_lo_default))
+        manual_hi = float(getCFGKey("manual_range_hi", 65535.0))
         
         self._raster_fig = RasterFigure(
             np.full((9, 9), np.nan),
-            autoRange=auto_range,
+            rangeMode=range_mode,
             logRange=log_range,
             showValues=show_values,
             waferDiameterMm=wafer_dia,
@@ -258,6 +266,9 @@ class UI(tkk.Tk):
             underColor=under_color,
             overColor=over_color,
             showOrientationHint=show_orientation_hint,
+            manualLo=manual_lo,
+            manualHi=manual_hi,
+            onManualRangeChange=self._store_manual_range,
         )
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._plot_container)
         self._raster_canvas.draw()
@@ -285,7 +296,7 @@ class UI(tkk.Tk):
         measurement_section.add_option(
             OptionDropdown(
                 measurement_section.content_frame,
-                "Measurement interval (ms)",
+                "Interval (ms)",
                 ["50", "100", "200", "500", "1000", "2000"],
                 "100",
                 command=set_freq,
@@ -306,14 +317,15 @@ class UI(tkk.Tk):
         display_section = OptionSection(self._options_container, "Display", persistent=True)
         self._add_option(display_section)
         
-        self._auto_range_toggle = OptionToggle(
+        self._range_mode_dropdown = OptionDropdown(
             display_section.content_frame, 
-            "Auto range", 
-            initial=False,
-            command=lambda _: self._rebuild_raster_fig(),
+            "Range",
+            ["auto", "manual", "max"],
+            "manual",
+            command=lambda _v: self._rebuild_raster_fig(),
             persistent=True
         )
-        display_section.add_option(self._auto_range_toggle)
+        display_section.add_option(self._range_mode_dropdown)
         
         self._log_scale_toggle = OptionToggle(
             display_section.content_frame, 
