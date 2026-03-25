@@ -48,7 +48,7 @@ class UI(tkk.Tk):
                 current_tab = self._tabview.index("current")
                 is_raw = self._raw_data_toggle.value.get() if hasattr(self, '_raw_data_toggle') else False
                 if current_tab == 0 and getattr(self, '_raster_fig', None):
-                    data = self._sensor.getMap(calibrated=is_raw)
+                    data = self._sensor.getMap(calibrated=not is_raw)
                     self.after(0, lambda: self._raster_fig.update_data(data))
             except Exception as e:
                 print(f"Error updating measurement: {e}")
@@ -140,6 +140,17 @@ class UI(tkk.Tk):
             self._frame_settings = tkk.Frame(self._tabview)
             self._tabview.add(self._frame_settings, text="Settings")
 
+            # Settings content: connection options
+            self._settings_serial_port = OptionDropdown(
+                self._frame_settings,
+                "Serial port",
+                ["auto"] + [port.device for port in Serial.listPorts()],
+                "auto",
+                command=lambda port: self._sensor.setPort(port) if self._sensor else None,
+                persistent=True,
+            )
+            self._settings_serial_port.add_to(self._frame_settings)
+
     def _rebuild_raster_fig(self) -> None:
         if not self._sensor or not self._sensor.ser or not self._sensor.ser.is_open:
             return
@@ -186,20 +197,6 @@ class UI(tkk.Tk):
         self._options_container.pack(fill="both", expand=True)
 
         self._options: list[Option] = []
-
-        serial_section = OptionSection(self._options_container, "Connection", persistent=True)
-        self._add_option(serial_section)
-        
-        serial_section.add_option(
-            OptionDropdown(
-                serial_section.content_frame,
-                "Serial port",
-                ["auto"] + [port.device for port in Serial.listPorts()], #todo: show device name
-                "auto",
-                command=lambda port: self._sensor.setPort(port) if self._sensor else None,
-                persistent=True
-            )
-        )
 
         measurement_section = OptionSection(self._options_container, "Measurement", persistent=True)
         self._add_option(measurement_section)
