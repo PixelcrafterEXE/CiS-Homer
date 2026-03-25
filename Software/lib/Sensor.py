@@ -284,14 +284,6 @@ class Sensor:
 
         return np.frombuffer(bytes(data), dtype="<u2", count=64).astype(np.uint16, copy=True)
 
-    def writeCalibrate(self, data: np.ndarray) -> None:
-        '''Kompatibilitätsalias für writeCalibration().'''
-        self.writeCalibration(data)
-
-    def readCalibrate(self) -> np.ndarray:
-        '''Kompatibilitätsalias für readCalibration().'''
-        return self.readCalibration()
-
     def getMap(self, calibrated: bool = False) -> np.ndarray:
         '''returns the latest sensor frame mapped to a 9x9 grid.'''
         raw = self.getCalibrated() if calibrated else self.getRaw()

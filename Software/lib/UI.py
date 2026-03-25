@@ -180,7 +180,7 @@ class UI(tkk.Tk):
 
         self._options: list[Option] = []
 
-        serial_section = OptionSection(self._options_container, "Verbindung")
+        serial_section = OptionSection(self._options_container, "Verbindung", persistent=True)
         self._add_option(serial_section)
         
         serial_section.add_option(
@@ -193,18 +193,8 @@ class UI(tkk.Tk):
                 persistent=True
             )
         )
-        serial_section.add_option(
-            OptionDropdown(
-                serial_section.content_frame,
-                "Baud-Rate", 
-                ["9600", "19200", "38400", "57600", "115200"],
-                "115200",
-                command=lambda baud: self._sensor.setBaud(int(baud)) if self._sensor else None,
-                persistent=True
-            )
-        )
 
-        messung_section = OptionSection(self._options_container, "Messung")
+        messung_section = OptionSection(self._options_container, "Messung", persistent=True)
         self._add_option(messung_section)
 
         self._stream_toggle = OptionToggle(messung_section.content_frame, "Messdaten Streamen", initial=True, persistent=True)
@@ -234,7 +224,7 @@ class UI(tkk.Tk):
             )
         )
         
-        display_section = OptionSection(self._options_container, "Anzeige")
+        display_section = OptionSection(self._options_container, "Anzeige", persistent=True)
         self._add_option(display_section)
         
         self._auto_range_toggle = OptionToggle(
@@ -264,7 +254,7 @@ class UI(tkk.Tk):
         )
         display_section.add_option(self._4inch_toggle)
 
-        export_section = OptionSection(self._options_container, "Exportieren")
+        export_section = OptionSection(self._options_container, "Exportieren", persistent=True)
         self._add_option(export_section)
         
         from lib.Export import is_usb_available, export_data
@@ -285,7 +275,7 @@ class UI(tkk.Tk):
         )
         export_section.add_option(lbl)
 
-        calibrate_section = OptionSection(self._options_container, "Kalibrierung")
+        calibrate_section = OptionSection(self._options_container, "Kalibrierung", persistent=True)
         self._add_option(calibrate_section)
 
         self._raw_data_toggle = OptionToggle(

@@ -112,15 +112,23 @@ class OptionDropdown(Option):
 
 
 class OptionSection(Option):
-    def __init__(self, parent, label: str, visibility: Callable[[], bool] | None = None) -> None:
+    def __init__(
+        self,
+        parent,
+        label: str,
+        visibility: Callable[[], bool] | None = None,
+        persistent: bool = False,
+    ) -> None:
         super().__init__(parent, label, visibility=visibility)
+        self.persistent = persistent
+        self.config_key = f"section_{label.replace(' ', '_')}"
         self.configure(padding=0)
         self._children: list[Option] = []
-        self._is_expanded = True
+        self._is_expanded = getCFGKey(self.config_key, True) if self.persistent else True
         
         self._header_btn = tkk.Button(
             self, 
-            text=f"▼  {self._label}", 
+            text="", 
             command=self._toggle, 
             bootstyle="link",
         )
@@ -129,15 +137,21 @@ class OptionSection(Option):
         self.content_frame = tkk.Frame(self)
         self.content_frame.grid(row=1, column=0, sticky="nsew", pady=(5, 0), padx=(10, 0))
         self.content_frame.columnconfigure(0, weight=1)
+        self._apply_expand_state()
 
-    def _toggle(self) -> None:
-        self._is_expanded = not self._is_expanded
+    def _apply_expand_state(self) -> None:
         if self._is_expanded:
             self._header_btn.configure(text=f"▼  {self._label}")
             self.content_frame.grid(row=1, column=0, sticky="nsew", pady=(5, 0), padx=(10, 0))
         else:
             self._header_btn.configure(text=f"▶  {self._label}")
             self.content_frame.grid_forget()
+
+    def _toggle(self) -> None:
+        self._is_expanded = not self._is_expanded
+        if self.persistent:
+            setCFGKey(self.config_key, self._is_expanded)
+        self._apply_expand_state()
 
     def add_option(self, option: Option) -> None:
         self._children.append(option)
