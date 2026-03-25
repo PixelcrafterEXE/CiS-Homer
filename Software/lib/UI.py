@@ -371,6 +371,13 @@ class UI(tkk.Tk):
         calibrate_section = OptionSection(self._options_container, "Calibration", persistent=True)
         self._add_option(calibrate_section)
 
+        measure_offset_btn = OptionButton(
+            calibrate_section.content_frame,
+            "Measure Offset",
+            command=lambda: self._sensor.measureOffset()
+        )
+        calibrate_section.add_option(measure_offset_btn)
+
         self._data_source_dropdown = OptionDropdown(
             calibrate_section.content_frame, 
             "Data source",
