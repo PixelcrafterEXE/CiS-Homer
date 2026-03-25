@@ -51,6 +51,7 @@ class RasterFigure(Figure):
         self._on_manual_range_change = onManualRangeChange
         self._value_texts = []
         self._outline_circle = None
+        self._stats_text = None
         self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
         
         ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [15, 1]})
@@ -147,6 +148,7 @@ class RasterFigure(Figure):
         self._draw_outline_circle(rows, cols)
         if self.showOrientationHint:
             self._draw_orientation_hint()
+        self._create_stats_text(data)
 
         self.colorbar(self.im, cax=cax)
 
@@ -258,6 +260,58 @@ class RasterFigure(Figure):
             # Non-critical visual element; ignore load/render issues.
             pass
 
+    def _create_stats_text(self, data: np.ndarray, unmapped: dict[int, int] | None = None) -> None:
+        self._stats_text = self.text(
+            0.02,
+            0.98,
+            "",
+            transform=self.transFigure,
+            ha='left',
+            va='top',
+            fontsize=9,
+            bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.75, "edgecolor": "none"},
+            zorder=6,
+        )
+        self._update_stats_text(data, unmapped)
+
+    def _update_stats_text(self, data: np.ndarray, unmapped: dict[int, int] | None = None) -> None:
+        if self._stats_text is None:
+            return
+
+        unmapped = unmapped or {}
+
+        def format_unmapped_lines(values: dict[int, int]) -> str:
+            ch8 = values.get(8)
+            ch33 = values.get(33)
+            ch52 = values.get(52)
+            return (
+                f"NTC (CH8): {'-' if ch8 is None else ch8}\n"
+                f"NTC (CH33): {'-' if ch33 is None else ch33}\n"
+                f"Refference Diode (CH52): {'-' if ch52 is None else ch52}"
+            )
+
+        valid = data[~np.isnan(data)]
+        if valid.size == 0:
+            base_text = "Median: -\nMean: -\nHomogenität: -"
+            self._stats_text.set_text(f"{base_text}\n{format_unmapped_lines(unmapped)}")
+            return
+
+        median = float(np.median(valid))
+        mean = float(np.mean(valid))
+        vmin = float(np.min(valid))
+        vmax = float(np.max(valid))
+        denom = vmax + vmin
+        homo = ((vmax - vmin) / denom) if denom != 0 else float('nan')
+
+        homo_text = "-" if np.isnan(homo) else f"{homo:.4f}"
+        stats_text = (
+            f"Median: {median:.1f}\n"
+            f"Mean: {mean:.1f}\n"
+            f"Homogeneity: {homo_text}"
+        )
+        stats_text += f"\n{format_unmapped_lines(unmapped)}"
+        self._stats_text.set_text(stats_text)
+
     def _circle_geometry(self, rows: int, cols: int) -> tuple[float, float, float]:
         center_x = (cols - 1) / 2.0
         center_y = (rows - 1) / 2.0
@@ -316,7 +370,7 @@ class RasterFigure(Figure):
                     luminance = 0.0
                 txt.set_color('white' if luminance < 0.5 else 'black')
 
-    def update_data(self, data: np.ndarray) -> None:
+    def update_data(self, data: np.ndarray, unmapped: dict[int, int] | None = None) -> None:
         data_float = data.astype(float)
         data_float = self._mask_outside_circle(data_float)
         self.im.set_data(data_float)
@@ -329,6 +383,7 @@ class RasterFigure(Figure):
             hi = float(valid_vals.max()) if len(valid_vals) else 65535.0
             self.im.set_cmap(self.make_cmap(lo, hi))
 
+        self._update_stats_text(data_float, unmapped)
         self._update_value_texts(data_float)
             
         if hasattr(self, 'canvas') and self.canvas:

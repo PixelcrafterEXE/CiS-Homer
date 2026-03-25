@@ -83,7 +83,7 @@ def export_data(sensor: Sensor) -> None:
             raw_data = sensor.getRaw()
         except Exception as e:
             print(f"Error reading from sensor: {e}")
-            return # Let the OS handle the mount since we had trouble reading data
+            return 
 
         # Save to CSV
         filename = datetime.datetime.now().strftime("Measurement_%Y%m%d_%H%M%S.csv")
@@ -95,7 +95,7 @@ def export_data(sensor: Sensor) -> None:
             for val in raw_data:
                 writer.writerow([val])
                 
-        # Only unmount if we mounted it in this session. If the user already mounted it before, don't unmount it
+        # Only unmount if we mounted it in this session. If the system already mounted it before, don't unmount it
         if not already_mounted:
             # Some OS-level automounters or our tight loop might hold locks. Wait briefly.
             time.sleep(1)

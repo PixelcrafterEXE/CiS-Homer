@@ -49,8 +49,8 @@ class UI(tkk.Tk):
                 current_tab = self._tabview.index("current")
                 is_raw = self._raw_data_toggle.value.get() if hasattr(self, '_raw_data_toggle') else False
                 if current_tab == 0 and getattr(self, '_raster_fig', None):
-                    data = self._sensor.getMap(calibrated=not is_raw)
-                    self.after(0, lambda: self._raster_fig.update_data(data))
+                    data, unmapped = self._sensor.getMap(calibrated=not is_raw, return_unmapped=True)
+                    self.after(0, lambda d=data, u=unmapped: self._raster_fig.update_data(d, unmapped=u))
             except Exception as e:
                 print(f"Error updating measurement: {e}")
                 if self._sensor and self._sensor.ser:
