@@ -6,12 +6,14 @@ import tkinter as tk
 import ttkbootstrap as tkk
 
 class RasterFigure(Figure):
-    def __init__(self, data: np.ndarray, autoRange: bool = False, logRange: bool = True, *args, **kwargs):
+    def __init__(self, data: np.ndarray, autoRange: bool = False, logRange: bool = True, showValues: bool = False, *args, **kwargs):
         kwargs.setdefault('figsize', (8, 6))
         super().__init__(*args, **kwargs)
         
         self.autoRange = autoRange
         self.logRange = logRange
+        self.showValues = showValues
+        self._value_texts = []
         self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
         
         ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [15, 1]})
@@ -44,6 +46,7 @@ class RasterFigure(Figure):
         norm = mcolors.LogNorm(vmin=1, vmax=65535, clip=True) if logRange else mcolors.Normalize(vmin=0, vmax=65535, clip=True)
 
         self.im = ax.imshow(data, cmap=make_cmap(lo, hi), norm=norm, interpolation='nearest', aspect='equal')
+        self._ax = ax
         ax.set_xticks([])
         ax.set_yticks([])
 
@@ -58,6 +61,9 @@ class RasterFigure(Figure):
             ax.add_collection(LineCollection(segs, colors='black', lw=0.5))
 
         self.colorbar(self.im, cax=cax)
+
+        if self.showValues:
+            self._create_value_texts(data)
 
         if not autoRange:
             self.state = {'drag': None, 'lo': lo, 'hi': hi}
@@ -92,6 +98,8 @@ class RasterFigure(Figure):
                     self.state['hi'] = max(y, self.state['lo'] * 1.001 if logRange else self.state['lo'] + 1)
                     self.hi_line.set_ydata([self.state['hi']] * 2)
                 self.im.set_cmap(make_cmap(self.state['lo'], self.state['hi']))
+                if self.showValues:
+                    self._update_value_texts(np.asarray(self.im.get_array(), dtype=float))
                 self.canvas.draw_idle()
 
             def on_release(event): 
@@ -118,6 +126,39 @@ class RasterFigure(Figure):
         if hasattr(self, '_connect_events'):
             self._connect_events(self)
 
+    def _create_value_texts(self, data: np.ndarray) -> None:
+        rows, cols = data.shape
+        self._value_texts = []
+        for i in range(rows):
+            row = []
+            for j in range(cols):
+                txt = self._ax.text(j, i, "", ha='center', va='center', fontsize=7)
+                row.append(txt)
+            self._value_texts.append(row)
+        self._update_value_texts(data)
+
+    def _update_value_texts(self, data: np.ndarray) -> None:
+        if not self.showValues or not self._value_texts:
+            return
+
+        rows, cols = data.shape
+        for i in range(rows):
+            for j in range(cols):
+                value = data[i, j]
+                txt = self._value_texts[i][j]
+                if np.isnan(value):
+                    txt.set_text("")
+                    continue
+
+                txt.set_text(f"{int(value)}")
+                try:
+                    r, g, b, _ = self.im.cmap(self.im.norm(value))
+                    # Perceived luminance for contrast-aware text color.
+                    luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+                except Exception:
+                    luminance = 0.0
+                txt.set_color('white' if luminance < 0.5 else 'black')
+
     def update_data(self, data: np.ndarray) -> None:
         data_float = data.astype(float)
         self.im.set_data(data_float)
@@ -128,6 +169,8 @@ class RasterFigure(Figure):
             lo = float(valid_vals.min()) if len(valid_vals) else (1.0 if self.logRange else 0.0)
             hi = float(valid_vals.max()) if len(valid_vals) else 65535.0
             self.im.set_cmap(self.make_cmap(lo, hi))
+
+        self._update_value_texts(data_float)
             
         if hasattr(self, 'canvas') and self.canvas:
             self.canvas.draw_idle()

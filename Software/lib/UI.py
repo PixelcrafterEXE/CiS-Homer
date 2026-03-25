@@ -105,6 +105,7 @@ class UI(tkk.Tk):
         self._position_overlay_toggle_button()
         if self._right_panel_expanded:
             self._right_panel.lift()
+
         # Keep floating controls correctly positioned and on top when resizing
         self.bind("<Configure>", self._on_window_configure)
 
@@ -148,8 +149,14 @@ class UI(tkk.Tk):
 
         auto_range = self._auto_range_toggle.value.get() if hasattr(self, '_auto_range_toggle') else False
         log_range = self._log_scale_toggle.value.get() if hasattr(self, '_log_scale_toggle') else True
+        show_values = self._show_values_toggle.value.get() if hasattr(self, '_show_values_toggle') else False
         
-        self._raster_fig = RasterFigure(np.full((9, 9), np.nan), autoRange=auto_range, logRange=log_range)
+        self._raster_fig = RasterFigure(
+            np.full((9, 9), np.nan),
+            autoRange=auto_range,
+            logRange=log_range,
+            showValues=show_values,
+        )
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._frame_raster_container)
         self._raster_canvas.draw()
         self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
@@ -244,6 +251,15 @@ class UI(tkk.Tk):
             persistent=True
         )
         display_section.add_option(self._log_scale_toggle)
+
+        self._show_values_toggle = OptionToggle(
+            display_section.content_frame,
+            "Show cell values",
+            initial=False,
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True
+        )
+        display_section.add_option(self._show_values_toggle)
 
         export_section = OptionSection(self._options_container, "Export", persistent=True)
         self._add_option(export_section)
