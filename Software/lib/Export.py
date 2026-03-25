@@ -91,7 +91,7 @@ def export_data(sensor: Sensor) -> None:
         
         with open(filepath, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(["Raw Data"])
+            writer.writerow(["Raw_Data"])
             for val in raw_data:
                 writer.writerow([val])
                 
