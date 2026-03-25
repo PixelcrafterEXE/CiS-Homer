@@ -3,6 +3,9 @@ from matplotlib.figure import Figure
 import matplotlib.colors as mcolors
 from matplotlib.collections import LineCollection
 from matplotlib.patches import Circle
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox, TextArea, VPacker
+import matplotlib.image as mpimg
+import os
 import tkinter as tk
 import ttkbootstrap as tkk
 
@@ -121,6 +124,7 @@ class RasterFigure(Figure):
             ax.add_collection(LineCollection(segs, colors='black', lw=0.5))
 
         self._draw_outline_circle(rows, cols)
+        self._draw_orientation_hint()
 
         self.colorbar(self.im, cax=cax)
 
@@ -199,6 +203,31 @@ class RasterFigure(Figure):
         else:
             self._outline_circle.center = (center_x, center_y)
             self._outline_circle.set_radius(radius)
+
+    def _draw_orientation_hint(self) -> None:
+        hint_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "res", "OrientHint.png")
+        )
+        if not os.path.exists(hint_path):
+            return
+
+        try:
+            hint_img = mpimg.imread(hint_path)
+            image_box = OffsetImage(hint_img, zoom=0.14)
+            label_box = TextArea("Orientation:", textprops={"fontsize": 9})
+            packed_box = VPacker(children=[label_box, image_box], align="center", pad=0, sep=2)
+            hint_artist = AnnotationBbox(
+                packed_box,
+                (0.02, 0.02),
+                xycoords='figure fraction',
+                frameon=False,
+                box_alignment=(0, 0),
+                zorder=5,
+            )
+            self.add_artist(hint_artist)
+        except Exception:
+            # Non-critical visual element; ignore load/render issues.
+            pass
 
     def _circle_geometry(self, rows: int, cols: int) -> tuple[float, float, float]:
         center_x = (cols - 1) / 2.0
