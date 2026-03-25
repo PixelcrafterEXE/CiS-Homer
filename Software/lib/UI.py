@@ -130,7 +130,6 @@ class UI(tkk.Tk):
             # Raster view
             self._frame_raster_container = tkk.Frame(self._tabview)
             self._tabview.add(self._frame_raster_container, text="Raster view")
-            self._rebuild_raster_fig()
 
             # Calibration tab (empty for now)
             self._frame_calibration = tkk.Frame(self._tabview)
@@ -151,6 +150,28 @@ class UI(tkk.Tk):
             )
             self._settings_serial_port.add_to(self._frame_settings)
 
+            self._settings_wafer_dia = OptionDropdown(
+                self._frame_settings,
+                "Wafer diameter (mm)",
+                [str(v) for v in range(50, 151, 10)],
+                "150",
+                command=lambda _v: self._rebuild_raster_fig(),
+                persistent=True,
+            )
+            self._settings_wafer_dia.add_to(self._frame_settings)
+
+            self._settings_hide_outside_circle = OptionToggle(
+                self._frame_settings,
+                "Mask values outside wafer dia.",
+                initial=False,
+                command=lambda _: self._rebuild_raster_fig(),
+                persistent=True,
+            )
+            self._settings_hide_outside_circle.add_to(self._frame_settings)
+
+            # Build plot last, after all UI elements and settings are in place.
+            self._rebuild_raster_fig()
+
     def _rebuild_raster_fig(self) -> None:
         if not self._sensor or not self._sensor.ser or not self._sensor.ser.is_open:
             return
@@ -161,12 +182,16 @@ class UI(tkk.Tk):
         auto_range = self._auto_range_toggle.value.get() if hasattr(self, '_auto_range_toggle') else False
         log_range = self._log_scale_toggle.value.get() if hasattr(self, '_log_scale_toggle') else True
         show_values = self._show_values_toggle.value.get() if hasattr(self, '_show_values_toggle') else False
+        wafer_dia = float(self._settings_wafer_dia.value.get()) if hasattr(self, '_settings_wafer_dia') else 150.0
+        hide_outside = self._settings_hide_outside_circle.value.get() if hasattr(self, '_settings_hide_outside_circle') else False
         
         self._raster_fig = RasterFigure(
             np.full((9, 9), np.nan),
             autoRange=auto_range,
             logRange=log_range,
             showValues=show_values,
+            waferDiameterMm=wafer_dia,
+            MaskWafer=hide_outside,
         )
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._frame_raster_container)
         self._raster_canvas.draw()

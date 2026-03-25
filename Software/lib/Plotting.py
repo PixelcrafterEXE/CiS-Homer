@@ -2,23 +2,40 @@ import numpy as np
 from matplotlib.figure import Figure
 import matplotlib.colors as mcolors
 from matplotlib.collections import LineCollection
+from matplotlib.patches import Circle
 import tkinter as tk
 import ttkbootstrap as tkk
 
 class RasterFigure(Figure):
-    def __init__(self, data: np.ndarray, autoRange: bool = False, logRange: bool = True, showValues: bool = False, *args, **kwargs):
+    def __init__(
+        self,
+        data: np.ndarray,
+        autoRange: bool = False,
+        logRange: bool = True,
+        showValues: bool = False,
+        waferDiameterMm: float = 150.0,
+        gridDiameterMm: float = 150.0,
+        MaskWafer: bool = False,
+        *args,
+        **kwargs,
+    ):
         kwargs.setdefault('figsize', (8, 6))
         super().__init__(*args, **kwargs)
         
         self.autoRange = autoRange
         self.logRange = logRange
         self.showValues = showValues
+        self.waferDiameterMm = waferDiameterMm
+        self.gridDiameterMm = gridDiameterMm if gridDiameterMm > 0 else 150.0
+        self.hideOutsideCircle = MaskWafer
         self._value_texts = []
+        self._outline_circle = None
         self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
         
         ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [15, 1]})
         
         data = data.astype(float)
+        data = self._mask_outside_circle(data)
         rows, cols = data.shape
         nan_mask = np.isnan(data)
         valid_vals = data[~nan_mask]
@@ -49,6 +66,9 @@ class RasterFigure(Figure):
         self._ax = ax
         ax.set_xticks([])
         ax.set_yticks([])
+        ax.set_frame_on(False)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
 
         def ok(i, j):
             return 0 <= i < rows and 0 <= j < cols and not nan_mask[i, j]
@@ -59,6 +79,8 @@ class RasterFigure(Figure):
         )
         if segs:
             ax.add_collection(LineCollection(segs, colors='black', lw=0.5))
+
+        self._draw_outline_circle(rows, cols)
 
         self.colorbar(self.im, cax=cax)
 
@@ -121,6 +143,43 @@ class RasterFigure(Figure):
             # Store connect function temporarily.
             self._connect_events = connect_events
 
+    def _draw_outline_circle(self, rows: int, cols: int) -> None:
+        center_x, center_y, radius = self._circle_geometry(rows, cols)
+
+        if self._outline_circle is None:
+            self._outline_circle = Circle(
+                (center_x, center_y),
+                radius,
+                fill=False,
+                edgecolor='black',
+                linewidth=1.5,
+                zorder=3,
+            )
+            self._ax.add_patch(self._outline_circle)
+        else:
+            self._outline_circle.center = (center_x, center_y)
+            self._outline_circle.set_radius(radius)
+
+    def _circle_geometry(self, rows: int, cols: int) -> tuple[float, float, float]:
+        center_x = (cols - 1) / 2.0
+        center_y = (rows - 1) / 2.0
+        base_radius = min(rows, cols) / 2.0
+        radius = base_radius * (self.waferDiameterMm / self.gridDiameterMm)
+        return center_x, center_y, radius
+
+    def _mask_outside_circle(self, data: np.ndarray) -> np.ndarray:
+        if not self.hideOutsideCircle:
+            return data
+
+        rows, cols = data.shape
+        center_x, center_y, radius = self._circle_geometry(rows, cols)
+        yy, xx = np.indices((rows, cols), dtype=float)
+        outside = (xx - center_x) ** 2 + (yy - center_y) ** 2 > radius ** 2
+
+        masked = data.copy()
+        masked[outside] = np.nan
+        return masked
+
     def set_canvas(self, canvas):
         super().set_canvas(canvas)
         if hasattr(self, '_connect_events'):
@@ -161,7 +220,9 @@ class RasterFigure(Figure):
 
     def update_data(self, data: np.ndarray) -> None:
         data_float = data.astype(float)
+        data_float = self._mask_outside_circle(data_float)
         self.im.set_data(data_float)
+        self._draw_outline_circle(*data_float.shape)
         
         if self.autoRange:
             nan_mask = np.isnan(data_float)
