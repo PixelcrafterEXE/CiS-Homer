@@ -16,6 +16,9 @@ class RasterFigure(Figure):
         waferDiameterMm: float = 150.0,
         gridDiameterMm: float = 150.0,
         MaskWafer: bool = False,
+        colorScheme: list[str] | tuple[str, ...] | None = None,
+        underColor: str = 'black',
+        overColor: str = 'white',
         *args,
         **kwargs,
     ):
@@ -28,6 +31,11 @@ class RasterFigure(Figure):
         self.waferDiameterMm = waferDiameterMm
         self.gridDiameterMm = gridDiameterMm if gridDiameterMm > 0 else 150.0
         self.hideOutsideCircle = MaskWafer
+        self.colorScheme = list(colorScheme) if colorScheme else ['black', 'white']
+        if len(self.colorScheme) == 1:
+            self.colorScheme = [self.colorScheme[0], self.colorScheme[0]]
+        self.underColor = underColor
+        self.overColor = overColor
         self._value_texts = []
         self._outline_circle = None
         self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
@@ -52,9 +60,28 @@ class RasterFigure(Figure):
                 lo_n, hi_n = lo / 65535.0, hi / 65535.0
             lo_n = float(np.clip(lo_n, 0.0, 1.0))
             hi_n = float(np.clip(hi_n, lo_n + 1e-6, 1.0))
+
+            stops: list[tuple[float, str]] = [
+                (0.0, self.underColor),
+                (lo_n, self.underColor),
+            ]
+
+            scheme_count = len(self.colorScheme)
+            for idx, color in enumerate(self.colorScheme):
+                t = idx / (scheme_count - 1)
+                pos = lo_n + t * (hi_n - lo_n)
+                stops.append((float(pos), color))
+
+            stops.extend([
+                (hi_n, self.overColor),
+                (1.0, self.overColor),
+            ])
+
             cmap = mcolors.LinearSegmentedColormap.from_list(
-                'raster', [(0.0, 'black'), (lo_n, 'black'), (hi_n, 'white'), (1.0, 'white')], N=65536
+                'raster', stops, N=65536
             )
+            cmap.set_under(self.underColor)
+            cmap.set_over(self.overColor)
             cmap.set_bad('none')
             return cmap
         

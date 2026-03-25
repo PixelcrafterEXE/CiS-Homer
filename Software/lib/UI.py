@@ -8,6 +8,7 @@ import lib.Sensor as Serial
 from lib.Sensor import Sensor
 from lib.Plotting import RasterFigure
 from lib.UI_Options import *
+from lib.Config import getColorSchemes
 
 class UI(tkk.Tk):
     def __init__(self) -> None:
@@ -169,6 +170,28 @@ class UI(tkk.Tk):
             )
             self._settings_hide_outside_circle.add_to(self._frame_settings)
 
+            self._color_schemes = getColorSchemes()
+            scheme_names = list(self._color_schemes.keys())
+
+            self._settings_color_scheme = OptionDropdown(
+                self._frame_settings,
+                "Color scheme",
+                scheme_names,
+                scheme_names[0] if scheme_names else "Grayscale",
+                command=lambda _v: self._rebuild_raster_fig(),
+                persistent=True,
+            )
+            self._settings_color_scheme.add_to(self._frame_settings)
+
+            self._settings_use_clipping_colors = OptionToggle(
+                self._frame_settings,
+                "Use clipping colors",
+                initial=True,
+                command=lambda _: self._rebuild_raster_fig(),
+                persistent=True,
+            )
+            self._settings_use_clipping_colors.add_to(self._frame_settings)
+
             # Build plot last, after all UI elements and settings are in place.
             self._rebuild_raster_fig()
 
@@ -184,6 +207,17 @@ class UI(tkk.Tk):
         show_values = self._show_values_toggle.value.get() if hasattr(self, '_show_values_toggle') else False
         wafer_dia = float(self._settings_wafer_dia.value.get()) if hasattr(self, '_settings_wafer_dia') else 150.0
         hide_outside = self._settings_hide_outside_circle.value.get() if hasattr(self, '_settings_hide_outside_circle') else False
+        selected_scheme = self._settings_color_scheme.value.get() if hasattr(self, '_settings_color_scheme') else "Grayscale"
+        schemes = getattr(self, '_color_schemes', getColorSchemes())
+        scheme = schemes.get(selected_scheme, {"colors": ["#000000", "#FFFFFF"], "under": "#000000", "over": "#FFFFFF"})
+        color_scheme = scheme.get("colors", ["#000000", "#FFFFFF"])
+        use_clipping_colors = self._settings_use_clipping_colors.value.get() if hasattr(self, '_settings_use_clipping_colors') else True
+        if use_clipping_colors:
+            under_color = scheme.get("under", color_scheme[0])
+            over_color = scheme.get("over", color_scheme[-1])
+        else:
+            under_color = color_scheme[0]
+            over_color = color_scheme[-1]
         
         self._raster_fig = RasterFigure(
             np.full((9, 9), np.nan),
@@ -192,6 +226,9 @@ class UI(tkk.Tk):
             showValues=show_values,
             waferDiameterMm=wafer_dia,
             MaskWafer=hide_outside,
+            colorScheme=color_scheme,
+            underColor=under_color,
+            overColor=over_color,
         )
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._frame_raster_container)
         self._raster_canvas.draw()
