@@ -1,10 +1,11 @@
+
 import serial
 from serial.tools import list_ports
 import re
 import time
 import threading
-
 import numpy as np
+from typing import Optional
 
 positions = [
     (2, 0),   # 1
@@ -76,7 +77,7 @@ positions = [
 
 def listPorts() -> list:
     '''gets all serial ports with attached devices'''
-    return list(list_ports.comports())
+    return [port for port in list_ports.comports()]
 
 class Sensor:
     def __init__(self, port: str = "auto", baud: int = 115200, device_id: str = "0403:6015"):
@@ -162,43 +163,49 @@ class Sensor:
         if self._running:
             self._timer = threading.Timer(0.1, self._pollSerial)
             self._timer.start()
-    
+
     def _read_64_channels(self, command: bytes) -> np.ndarray:
-        '''requests one frame of 64 channels data and returns it as a numpy array with dtype uint16.'''
+        '''requests one frame of 64 channels data and returns it as a numpy array.'''
         ser = self.ser
         if ser is None or not ser.is_open:
             raise RuntimeError("Serial connection is not open.")
 
-        # Discard stale bytes and request one frame.
         ser.reset_input_buffer()
+        #print(f"[SERIAL OUT] write: {command!r}")
         ser.write(command)
         ser.flush()
 
-        # Parse tokens of the form "<channel>:<value>" until all 64 channels are available.
-        pattern = re.compile(r"(\d+)\s*:\s*(\d+)")
+        # UPDATED REGEX: Added -? to allow for negative values
+        pattern = re.compile(r"(\d+)\s*:\s*(-?\d+)")
         values = {}
         remainder = ""
 
         try:
-            deadline = time.monotonic() + 3.0
+            deadline = time.monotonic() + 5.0
             while len(values) < 64 and time.monotonic() < deadline:
                 chunk = ser.read(ser.in_waiting or 1)
                 if not chunk:
                     continue
 
+#                print(f"[SERIAL IN] read: {chunk!r}")
                 text = remainder + chunk.decode("ascii", errors="ignore")
                 parts = re.split(r"[\r\n]+", text)
                 remainder = parts.pop() if parts else ""
 
                 for token in parts:
-                    m = pattern.search(token)
-                    if not m:
-                        continue
-                    idx = int(m.group(1))
-                    val = int(m.group(2))
-                    if 1 <= idx <= 64:
-                        values[idx] = val
+                    for m in pattern.finditer(token):
+                        idx = int(m.group(1))
+                        val = int(m.group(2))
+                        if 1 <= idx <= 64:
+                            values[idx] = val
 
+            for m in pattern.finditer(remainder):
+                idx = int(m.group(1))
+                val = int(m.group(2))
+                if 1 <= idx <= 64:
+                    values[idx] = val
+
+            #print(f"[SERIAL OUT] write: {b'x\r'!r}")
             ser.write(b"x\r")
             ser.flush()
 
@@ -206,19 +213,18 @@ class Sensor:
                 missing = [i for i in range(1, 65) if i not in values]
                 raise ValueError(f"Incomplete sensor frame, missing channels: {missing}")
 
-            return np.array([values[i] for i in range(1, 65)], dtype=np.uint16)
+            # UPDATED DTYPE: Changed to int32 to safely store negative offsets
+            return np.array([values[i] for i in range(1, 65)], dtype=np.int32)
         except Exception as e:
-            raise RuntimeError(f"Failed to read sensor data: {e}")
-
+            raise RuntimeError(f"Failed to read sensor data: {e}") 
+   
     def getRaw(self) -> np.ndarray:
         '''ADC Rohwerte auslesen für alle FD Kanäle (r)'''
         return self._read_64_channels(b"r")
 
     def getCalibrated(self) -> np.ndarray:
         '''ADC Rohwerte abzüglich Kalibrierwerte (m)'''
-        #calculating calibrated values on the mcu (m command) is not implemented according to spec. The return only contains channels 33..64
         return self._read_64_channels(b"m")
-
 
     def getOffset(self) -> np.ndarray:
         '''ADC Rohwerte abzüglich Offsetwerte (o)'''
@@ -284,10 +290,22 @@ class Sensor:
 
         return np.frombuffer(bytes(data), dtype="<u2", count=64).astype(np.uint16, copy=True)
 
-    def getMap(self, calibrated: bool = False, return_unmapped: bool = False):
+    def getMap(self, calibrated: bool = False, return_unmapped: bool = False, data_source: Optional[str] = None):
         '''returns the latest sensor frame mapped to a 9x9 grid.
         If return_unmapped is True, also returns a dict of unmapped channel values.'''
-        raw = self.getCalibrated() if calibrated else self.getRaw()
+        if data_source is None:
+            raw = self.getCalibrated() if calibrated else self.getRaw()
+        else:
+            source = data_source.strip().lower()
+            if source == "raw":
+                raw = self.getRaw()
+            elif source == "calibrated":
+                raw = self.getCalibrated()
+            elif source == "offset":
+                raw = self.getOffset()
+            else:
+                raise ValueError(f"Unknown data_source '{data_source}'. Expected one of: raw, calibrated, offset")
+
         array = np.full((9, 9), np.nan)
         unmapped: dict[int, int] = {}
         for i, pos in enumerate(positions):
