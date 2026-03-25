@@ -93,22 +93,14 @@ class UI(tkk.Tk):
         self.title("CiS HomeRPI")
         #self.attributes("-fullscreen", True)
 
-        # Main container for left view and right overlay
+        # Main container
         self._main = tkk.Frame(self)
         self._main.pack(fill="both", expand=True)
 
-        self._right_panel_expanded = False
+        if not hasattr(self, '_options_panel_visible'):
+            self._options_panel_visible = False
 
-        self._build_right_panel()
         self._build_left_panel()
-
-        # Left panel is built after overlay; ensure overlay controls stay on top.
-        self._position_overlay_toggle_button()
-        if self._right_panel_expanded:
-            self._right_panel.lift()
-
-        # Keep floating controls correctly positioned and on top when resizing
-        self.bind("<Configure>", self._on_window_configure)
 
     def _build_left_panel(self) -> None:
         if hasattr(self, '_left_panel'):
@@ -131,6 +123,32 @@ class UI(tkk.Tk):
             # Raster view
             self._frame_raster_container = tkk.Frame(self._tabview)
             self._tabview.add(self._frame_raster_container, text="Raster view")
+
+            self._raster_root = tkk.Frame(self._frame_raster_container)
+            self._raster_root.pack(fill="both", expand=True)
+
+            self._raster_topbar = tkk.Frame(self._raster_root)
+            self._raster_topbar.pack(fill="x", padx=4, pady=(2, 4))
+
+            self._options_toggle_btn = tkk.Button(
+                self._raster_topbar,
+                text="⮞ Show options",
+                command=self._toggle_options_panel,
+                bootstyle="secondary"
+            )
+            self._options_toggle_btn.pack(side="right")
+
+            self._raster_body = tkk.Frame(self._raster_root)
+            self._raster_body.pack(fill="both", expand=True)
+            self._raster_body.columnconfigure(0, weight=1)
+            self._raster_body.rowconfigure(0, weight=1)
+
+            self._plot_container = tkk.Frame(self._raster_body)
+            self._plot_container.grid(row=0, column=0, sticky="nsew")
+
+            self._options_panel = tkk.Frame(self._raster_body, padding=(10, 10, 10, 10), relief="ridge", borderwidth=1)
+            self._build_options_panel(self._options_panel)
+            self._apply_options_panel_visibility()
 
             # Calibration tab (empty for now)
             self._frame_calibration = tkk.Frame(self._tabview)
@@ -241,32 +259,16 @@ class UI(tkk.Tk):
             overColor=over_color,
             showOrientationHint=show_orientation_hint,
         )
-        self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._frame_raster_container)
+        self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._plot_container)
         self._raster_canvas.draw()
         self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
 
         if hasattr(self, '_stream_toggle') and not self._stream_toggle.value.get():
             self._update_measurement()
 
-    def _build_right_panel(self) -> None:
-        self._right_panel = tkk.Frame(self._main, padding=(10, 10, 10, 10), relief="ridge", borderwidth=1)
-        self._right_panel.place(relx=1.0, rely=0.0, anchor="ne", relwidth=0.34, relheight=1.0)
-        self._right_panel.lift()
-
-        self._overlay_toggle_btn = tkk.Button(
-            self._main,
-            text="⮜ Hide options",
-            command=self._toggle_right_panel,
-            bootstyle="secondary"
-        )
-        self._position_overlay_toggle_button()
-
-        if not self._right_panel_expanded:
-            self._right_panel.place_forget()
-            self._overlay_toggle_btn.configure(text="⮞ Show options")
-
+    def _build_options_panel(self, parent) -> None:
         from ttkbootstrap.scrolled import ScrolledFrame
-        self._options_container = ScrolledFrame(self._right_panel, autohide=True, bootstyle="round")
+        self._options_container = ScrolledFrame(parent, autohide=True, bootstyle="round")
         self._options_container.pack(fill="both", expand=True)
 
         self._options: list[Option] = []
@@ -364,27 +366,20 @@ class UI(tkk.Tk):
         )
         calibrate_section.add_option(self._raw_data_toggle)
 
-    def _toggle_right_panel(self) -> None:
-        self._right_panel_expanded = not self._right_panel_expanded
+    def _toggle_options_panel(self) -> None:
+        self._options_panel_visible = not self._options_panel_visible
+        self._apply_options_panel_visibility()
 
-        if self._right_panel_expanded:
-            self._right_panel.place(relx=1.0, rely=0.0, anchor="ne", relwidth=0.34, relheight=1.0)
-            self._right_panel.lift()
-            self._overlay_toggle_btn.configure(text="⮜ Hide options")
+    def _apply_options_panel_visibility(self) -> None:
+        if not hasattr(self, '_options_panel') or not hasattr(self, '_options_toggle_btn'):
+            return
+
+        if self._options_panel_visible:
+            self._options_panel.grid(row=0, column=1, sticky="nsew")
+            self._options_toggle_btn.configure(text="⮜ Hide options")
         else:
-            self._right_panel.place_forget()
-            self._overlay_toggle_btn.configure(text="⮞ Show options")
-
-        self._position_overlay_toggle_button()
-
-    def _position_overlay_toggle_button(self) -> None:
-        # Keep a small inset so the button is never clipped by the right window edge.
-        self._overlay_toggle_btn.place(relx=1.0, x=-8, y=8, anchor="ne")
-        self._overlay_toggle_btn.lift()
-
-    def _on_window_configure(self, _event=None) -> None:
-        if hasattr(self, '_overlay_toggle_btn'):
-            self._position_overlay_toggle_button()
+            self._options_panel.grid_forget()
+            self._options_toggle_btn.configure(text="⮞ Show options")
 
         
 
