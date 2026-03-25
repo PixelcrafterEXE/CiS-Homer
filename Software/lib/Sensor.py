@@ -1,10 +1,11 @@
+
 import serial
 from serial.tools import list_ports
 import re
 import time
 import threading
-
 import numpy as np
+from typing import Optional
 
 positions = [
     (2, 0),   # 1
@@ -290,7 +291,7 @@ class Sensor:
 
         return np.frombuffer(bytes(data), dtype="<u2", count=64).astype(np.uint16, copy=True)
 
-    def getMap(self, calibrated: bool = False, return_unmapped: bool = False, data_source: str | None = None):
+    def getMap(self, calibrated: bool = False, return_unmapped: bool = False, data_source: Optional[str] = None):
         '''returns the latest sensor frame mapped to a 9x9 grid.
         If return_unmapped is True, also returns a dict of unmapped channel values.'''
         if data_source is None:
