@@ -285,9 +285,9 @@ class RasterFigure(Figure):
             ch33 = values.get(33)
             ch52 = values.get(52)
             return (
-                f"NTC (CH8): {'-' if ch8 is None else ch8}\n"
-                f"NTC (CH33): {'-' if ch33 is None else ch33}\n"
-                f"Refference Diode (CH52): {'-' if ch52 is None else ch52}"
+                f"NTC1 (CH8): {'-' if ch8 is None else ch8}\n"
+                f"NTC2 (CH33): {'-' if ch33 is None else ch33}\n"
+                f"Reference Diode (CH52): {'-' if ch52 is None else ch52}"
             )
 
         valid = data[~np.isnan(data)]

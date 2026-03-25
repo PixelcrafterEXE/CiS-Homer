@@ -58,7 +58,7 @@ positions = [
     (3, 3),   # 49
     (3, 1),   # 50
     (3, -2),  # 51
-    None,     # 52 (Refference Diode)
+    None,     # 52 (Reference Diode)
     (1, -1),  # 53
     (0, -4),  # 54
     (-2, 0),  # 55

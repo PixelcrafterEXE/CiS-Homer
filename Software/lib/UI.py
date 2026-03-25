@@ -338,7 +338,7 @@ class UI(tkk.Tk):
 
         self._show_values_toggle = OptionToggle(
             display_section.content_frame,
-            "Show cell values",
+            "Label Measurements",
             initial=False,
             command=lambda _: self._rebuild_raster_fig(),
             persistent=True
