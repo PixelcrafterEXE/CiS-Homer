@@ -5,7 +5,6 @@ import time
 import threading
 
 import numpy as np
-from matplotlib.figure import Figure
 
 positions = [
     (2, 0),   # 1
@@ -164,15 +163,15 @@ class Sensor:
             self._timer = threading.Timer(0.1, self._pollSerial)
             self._timer.start()
     
-    def getRaw(self) -> np.ndarray:
-        '''requests one raw frame of sensor data and returns it as a numpy array of shape (64,) with dtype uint16.'''
+    def _read_64_channels(self, command: bytes) -> np.ndarray:
+        '''requests one frame of 64 channels data and returns it as a numpy array with dtype uint16.'''
         ser = self.ser
         if ser is None or not ser.is_open:
             raise RuntimeError("Serial connection is not open.")
 
-        # Discard stale bytes and request one raw frame.
+        # Discard stale bytes and request one frame.
         ser.reset_input_buffer()
-        ser.write(b"r")
+        ser.write(command)
         ser.flush()
 
         # Parse tokens of the form "<channel>:<value>" until all 64 channels are available.
@@ -200,6 +199,9 @@ class Sensor:
                     if 1 <= idx <= 64:
                         values[idx] = val
 
+            ser.write(b"x\r")
+            ser.flush()
+
             if len(values) != 64:
                 missing = [i for i in range(1, 65) if i not in values]
                 raise ValueError(f"Incomplete sensor frame, missing channels: {missing}")
@@ -208,12 +210,86 @@ class Sensor:
         except Exception as e:
             raise RuntimeError(f"Failed to read sensor data: {e}")
 
-    def getMap(self) -> np.ndarray:
+    def getRaw(self) -> np.ndarray:
+        '''ADC Rohwerte auslesen für alle FD Kanäle (r)'''
+        return self._read_64_channels(b"r")
+
+    def getCalibrated(self) -> np.ndarray:
+        '''ADC Rohwerte abzüglich Kalibrierwerte (m)'''
+        #calculating calibrated values on the mcu (m command) is not implemented according to spec. The return only contains channels 33..64
+        return self._read_64_channels(b"m")
+
+
+    def getOffset(self) -> np.ndarray:
+        '''ADC Rohwerte abzüglich Offsetwerte (o)'''
+        return self._read_64_channels(b"o")
+
+    def measureOffset(self) -> None:
+        '''Offsetwerte für 64 Kanäle messen und in EEProm speichern (d)'''
+        if self.ser is None or not self.ser.is_open:
+            raise RuntimeError("Serial connection is not open.")
+        self.ser.write(b"d")
+        self.ser.flush()
+
+    def writeCalibration(self, data: np.ndarray) -> None:
+        '''Kalibrierwerte in EEprom speichern (a), erwartet 64x uint16.'''
+        if self.ser is None or not self.ser.is_open:
+            raise RuntimeError("Serial connection is not open.")
+
+        array = np.asarray(data)
+        if array.shape != (64,):
+            raise ValueError(f"Calibration data must have shape (64,), got {array.shape}")
+
+        # Ensure 2-byte unsigned integer values and convert to 128-byte payload.
+        if np.any(array < 0) or np.any(array > 65535):
+            raise ValueError("Calibration values must be in range 0..65535")
+        payload = array.astype("<u2", copy=False).tobytes()
+        if len(payload) != 128:
+            raise ValueError("Calibration payload must be exactly 128 bytes (64 x 2 bytes)")
+
+        # Stop potential stream and clear stale data before binary command.
+        self.ser.write(b"x\r")
+        self.ser.flush()
+        time.sleep(0.05)
+        self.ser.reset_input_buffer()
+
+        self.ser.write(b"a")
+        self.ser.write(payload)
+        self.ser.flush()
+
+    def readCalibration(self) -> np.ndarray:
+        '''Kalibrierwerte auslesen (k), gibt 64x uint16 zurück.'''
+        if self.ser is None or not self.ser.is_open:
+            raise RuntimeError("Serial connection is not open.")
+
+        # Stop potential stream and clear stale data before binary command.
+        self.ser.write(b"x\r")
+        self.ser.flush()
+        time.sleep(0.05)
+        self.ser.reset_input_buffer()
+
+        self.ser.write(b"k")
+        self.ser.flush()
+
+        # Expect 128 bytes (2x 64 bytes).
+        deadline = time.monotonic() + 5.0
+        data = bytearray()
+        while len(data) < 128 and time.monotonic() < deadline:
+            chunk = self.ser.read(128 - len(data))
+            if chunk:
+                data.extend(chunk)
+
+        if len(data) != 128:
+            raise RuntimeError(f"Failed to read calibration data, received {len(data)}/128 bytes")
+
+        return np.frombuffer(bytes(data), dtype="<u2", count=64).astype(np.uint16, copy=True)
+
+    def getMap(self, calibrated: bool = False) -> np.ndarray:
         '''returns the latest sensor frame mapped to a 9x9 grid.'''
-        raw = self.getRaw()
+        raw = self.getCalibrated() if calibrated else self.getRaw()
         array = np.full((9, 9), np.nan)
         for i, pos in enumerate(positions):
             if pos is not None:
-                array[pos[0] + 4, pos[1] + 4] = raw[i]
+                array[pos[1] + 4, pos[0] + 4] = raw[i]
         return array
             
