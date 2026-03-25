@@ -47,6 +47,5 @@ def temperature_from_reading(reading: int, poly: np.poly1d) -> float:
 	"""Calculate temperature in °C directly from ADC reading (0..65535)."""
 	if not 0 <= reading <= 65535:
 		raise ValueError("reading must be in range 0..65535")
-	resistance = resistance_from_reading(float(reading))
-	return temperature_from_resistance(resistance, poly)
+	return temperature_from_resistance(resistance_from_reading(float(reading)), poly)
 
