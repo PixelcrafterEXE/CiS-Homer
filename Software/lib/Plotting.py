@@ -6,19 +6,15 @@ import tkinter as tk
 import ttkbootstrap as tkk
 
 class RasterFigure(Figure):
-    def __init__(self, data: np.ndarray, autoRange: bool = False, logRange: bool = True, is_4in: bool = False, *args, **kwargs):
+    def __init__(self, data: np.ndarray, autoRange: bool = False, logRange: bool = True, *args, **kwargs):
         kwargs.setdefault('figsize', (8, 6))
         super().__init__(*args, **kwargs)
         
         self.autoRange = autoRange
         self.logRange = logRange
-        self.is_4in = is_4in
         self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
         
         ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [15, 1]})
-        
-        if self.is_4in and data.shape == (9, 9):
-            data = data[1:8, 1:8]
         
         data = data.astype(float)
         rows, cols = data.shape
@@ -123,9 +119,6 @@ class RasterFigure(Figure):
             self._connect_events(self)
 
     def update_data(self, data: np.ndarray) -> None:
-        if getattr(self, 'is_4in', False) and data.shape == (9, 9):
-            data = data[1:8, 1:8]
-            
         data_float = data.astype(float)
         self.im.set_data(data_float)
         
