@@ -1,8 +1,9 @@
 import json
 import os
 
-CONFIG_FILE = "config.json"
-COLOR_SCHEMES_FILE = "colors.json"
+APP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+CONFIG_FILE = os.path.join(APP_DIR, "res", "config.json")
+COLOR_SCHEMES_FILE = os.path.join(APP_DIR, "res", "colors.json")
 
 def _load_config():
     if os.path.exists(CONFIG_FILE):
@@ -15,6 +16,7 @@ def _load_config():
 
 def _save_config(config):
     try:
+        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=4, ensure_ascii=False)
     except Exception as e:

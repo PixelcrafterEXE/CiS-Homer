@@ -5,8 +5,8 @@
             "#FFFFFF",
             "#FF0000"
         ],
-        "under": "#0000FF",
-        "over": "#FF0000"
+        "under": "#000000",
+        "over": "#FFFF00"
     },
     "Grayscale": {
         "colors": [
@@ -24,8 +24,8 @@
             "#5DC863",
             "#FDE725"
         ],
-        "under": "#440154",
-        "over": "#FDE725"
+        "under": "#000000",
+        "over": "#FFFFFF"
     },
     "Inferno": {
         "colors": [
@@ -36,7 +36,7 @@
             "#FCA50A",
             "#FCFFA4"
         ],
-        "under": "#000004",
-        "over": "#FCFFA4"
+        "under": "#000000",
+        "over": "#FFFFFF"
     }
 }
