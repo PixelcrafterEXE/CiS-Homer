@@ -279,9 +279,6 @@ class UI(tkk.Tk):
         self._raster_canvas.draw()
         self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
 
-        if hasattr(self, '_stream_toggle') and not self._stream_toggle.value.get():
-            self._update_measurement()
-
     def _build_options_panel(self, parent) -> None:
         from ttkbootstrap.scrolled import ScrolledFrame
         self._options_container = ScrolledFrame(parent, autohide=True, bootstyle="round")
