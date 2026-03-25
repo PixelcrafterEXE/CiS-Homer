@@ -50,9 +50,9 @@ class UI(tkk.Tk):
         def fetch_and_update():
             try:
                 current_tab = self._tabview.index("current")
-                is_raw = self._raw_data_toggle.value.get() if hasattr(self, '_raw_data_toggle') else False
+                data_source = self._data_source_dropdown.value.get() if hasattr(self, '_data_source_dropdown') else "raw"
                 if current_tab == 0 and getattr(self, '_raster_fig', None):
-                    data, unmapped = self._sensor.getMap(calibrated=not is_raw, return_unmapped=True)
+                    data, unmapped = self._sensor.getMap(data_source=data_source, return_unmapped=True)
                     self.after(0, lambda d=data, u=unmapped: self._raster_fig.update_data(d, unmapped=u))
             except Exception as e:
                 print(f"Error updating measurement: {e}")
@@ -374,14 +374,15 @@ class UI(tkk.Tk):
         calibrate_section = OptionSection(self._options_container, "Calibration", persistent=True)
         self._add_option(calibrate_section)
 
-        self._raw_data_toggle = OptionToggle(
+        self._data_source_dropdown = OptionDropdown(
             calibrate_section.content_frame, 
-            "Show raw data", 
-            initial=True,
-            command=lambda _: self._rebuild_raster_fig(),
+            "Data source",
+            ["raw", "calibrated", "offset"],
+            "raw",
+            command=lambda _v: self._update_measurement(),
             persistent=True
         )
-        calibrate_section.add_option(self._raw_data_toggle)
+        calibrate_section.add_option(self._data_source_dropdown)
 
     def _toggle_options_panel(self) -> None:
         self._options_panel_visible = not self._options_panel_visible

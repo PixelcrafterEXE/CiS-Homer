@@ -156,6 +156,7 @@ class Sensor:
                     print(f"Failed to connect to {device}: {e}")
         elif not self.ser.is_open:
             self.ser = None
+        #todo: disconnect detection, timeout, etc. to set self.ser = None if connection is lost
         
         #rerun after 100ms
         if self._running:
@@ -179,7 +180,7 @@ class Sensor:
         remainder = ""
 
         try:
-            deadline = time.monotonic() + 3.0
+            deadline = time.monotonic() + 5.0
             while len(values) < 64 and time.monotonic() < deadline:
                 chunk = ser.read(ser.in_waiting or 1)
                 if not chunk:
@@ -190,13 +191,18 @@ class Sensor:
                 remainder = parts.pop() if parts else ""
 
                 for token in parts:
-                    m = pattern.search(token)
-                    if not m:
-                        continue
-                    idx = int(m.group(1))
-                    val = int(m.group(2))
-                    if 1 <= idx <= 64:
-                        values[idx] = val
+                    for m in pattern.finditer(token):
+                        idx = int(m.group(1))
+                        val = int(m.group(2))
+                        if 1 <= idx <= 64:
+                            values[idx] = val
+
+            # Also parse a potential final line even if it has no trailing newline.
+            for m in pattern.finditer(remainder):
+                idx = int(m.group(1))
+                val = int(m.group(2))
+                if 1 <= idx <= 64:
+                    values[idx] = val
 
             ser.write(b"x\r")
             ser.flush()
@@ -216,7 +222,6 @@ class Sensor:
     def getCalibrated(self) -> np.ndarray:
         '''ADC Rohwerte abzüglich Kalibrierwerte (m)'''
         return self._read_64_channels(b"m")
-
 
     def getOffset(self) -> np.ndarray:
         '''ADC Rohwerte abzüglich Offsetwerte (o)'''
@@ -282,10 +287,22 @@ class Sensor:
 
         return np.frombuffer(bytes(data), dtype="<u2", count=64).astype(np.uint16, copy=True)
 
-    def getMap(self, calibrated: bool = False, return_unmapped: bool = False):
+    def getMap(self, calibrated: bool = False, return_unmapped: bool = False, data_source: str | None = None):
         '''returns the latest sensor frame mapped to a 9x9 grid.
         If return_unmapped is True, also returns a dict of unmapped channel values.'''
-        raw = self.getCalibrated() if calibrated else self.getRaw()
+        if data_source is None:
+            raw = self.getCalibrated() if calibrated else self.getRaw()
+        else:
+            source = data_source.strip().lower()
+            if source == "raw":
+                raw = self.getRaw()
+            elif source == "calibrated":
+                raw = self.getCalibrated()
+            elif source == "offset":
+                raw = self.getOffset()
+            else:
+                raise ValueError(f"Unknown data_source '{data_source}'. Expected one of: raw, calibrated, offset")
+
         array = np.full((9, 9), np.nan)
         unmapped: dict[int, int] = {}
         for i, pos in enumerate(positions):
