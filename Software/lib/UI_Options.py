@@ -88,6 +88,8 @@ class OptionDropdown(Option):
         super().__init__(parent, label, visibility=visibility)
         self.persistent = persistent
         self.config_key = f"dropdown_{label.replace(' ', '_')}"
+        self.columnconfigure(0, weight=1, uniform="option_dropdown")
+        self.columnconfigure(1, weight=1, uniform="option_dropdown")
 
         text = tkk.Label(self, text=label)
         text.grid(row=0, column=0, sticky="w", padx=(0, 10))
@@ -108,7 +110,6 @@ class OptionDropdown(Option):
                 command(self.value.get())
 
         dropdown.bind("<<ComboboxSelected>>", _on_select)
-        self.columnconfigure(1, weight=1)
 
 
 class OptionSection(Option):
