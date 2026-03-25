@@ -192,6 +192,15 @@ class UI(tkk.Tk):
             )
             self._settings_use_clipping_colors.add_to(self._frame_settings)
 
+            self._settings_show_orientation_hint = OptionToggle(
+                self._frame_settings,
+                "Show orientation hint",
+                initial=True,
+                command=lambda _: self._rebuild_raster_fig(),
+                persistent=True,
+            )
+            self._settings_show_orientation_hint.add_to(self._frame_settings)
+
             # Build plot last, after all UI elements and settings are in place.
             self._rebuild_raster_fig()
 
@@ -212,6 +221,7 @@ class UI(tkk.Tk):
         scheme = schemes.get(selected_scheme, {"colors": ["#000000", "#FFFFFF"], "under": "#000000", "over": "#FFFFFF"})
         color_scheme = scheme.get("colors", ["#000000", "#FFFFFF"])
         use_clipping_colors = self._settings_use_clipping_colors.value.get() if hasattr(self, '_settings_use_clipping_colors') else True
+        show_orientation_hint = self._settings_show_orientation_hint.value.get() if hasattr(self, '_settings_show_orientation_hint') else True
         if use_clipping_colors:
             under_color = scheme.get("under", color_scheme[0])
             over_color = scheme.get("over", color_scheme[-1])
@@ -229,6 +239,7 @@ class UI(tkk.Tk):
             colorScheme=color_scheme,
             underColor=under_color,
             overColor=over_color,
+            showOrientationHint=show_orientation_hint,
         )
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._frame_raster_container)
         self._raster_canvas.draw()
@@ -347,7 +358,7 @@ class UI(tkk.Tk):
         self._raw_data_toggle = OptionToggle(
             calibrate_section.content_frame, 
             "Show raw data", 
-            initial=False,
+            initial=True,
             command=lambda _: self._rebuild_raster_fig(),
             persistent=True
         )

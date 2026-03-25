@@ -22,6 +22,7 @@ class RasterFigure(Figure):
         colorScheme: list[str] | tuple[str, ...] | None = None,
         underColor: str = 'black',
         overColor: str = 'white',
+        showOrientationHint: bool = True,
         *args,
         **kwargs,
     ):
@@ -39,6 +40,7 @@ class RasterFigure(Figure):
             self.colorScheme = [self.colorScheme[0], self.colorScheme[0]]
         self.underColor = underColor
         self.overColor = overColor
+        self.showOrientationHint = showOrientationHint
         self._value_texts = []
         self._outline_circle = None
         self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
@@ -124,7 +126,8 @@ class RasterFigure(Figure):
             ax.add_collection(LineCollection(segs, colors='black', lw=0.5))
 
         self._draw_outline_circle(rows, cols)
-        self._draw_orientation_hint()
+        if self.showOrientationHint:
+            self._draw_orientation_hint()
 
         self.colorbar(self.im, cax=cax)
 
