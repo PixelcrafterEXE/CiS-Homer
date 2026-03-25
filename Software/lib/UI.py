@@ -128,23 +128,23 @@ class UI(tkk.Tk):
             self._tabview = tkk.Notebook(self._left_panel)
             self._tabview.pack(fill="both", expand=True)
 
-            # Rasteransicht
+            # Raster view
             self._frame_raster_container = tkk.Frame(self._tabview)
-            self._tabview.add(self._frame_raster_container, text="Rasteransicht")
+            self._tabview.add(self._frame_raster_container, text="Raster view")
             self._rebuild_raster_fig()
 
-            # Balkenansicht
+            # Bar view
             self._frame_bar = tkk.Frame(self._tabview)
             self._bar_fig = BarFigure(np.zeros(64))
             canvas_bar = FigureCanvasTkAgg(self._bar_fig, master=self._frame_bar)
             canvas_bar.draw()
             canvas_bar.get_tk_widget().pack(fill="both", expand=True)
-            self._tabview.add(self._frame_bar, text="Balkenansicht")
+            self._tabview.add(self._frame_bar, text="Bar view")
 
-            # Tabellenansicht
+            # Table view
             is_4in = self._4inch_toggle.value.get() if hasattr(self, '_4inch_toggle') else False
             self._table_frame = TableFrame(self._tabview, np.full((9, 9), np.nan), is_4in=is_4in)
-            self._tabview.add(self._table_frame, text="Tabellenansicht")
+            self._tabview.add(self._table_frame, text="Table view")
 
     def _rebuild_raster_fig(self) -> None:
         if not self._sensor or not self._sensor.ser or not self._sensor.ser.is_open:
@@ -180,13 +180,13 @@ class UI(tkk.Tk):
 
         self._options: list[Option] = []
 
-        serial_section = OptionSection(self._options_container, "Verbindung", persistent=True)
+        serial_section = OptionSection(self._options_container, "Connection", persistent=True)
         self._add_option(serial_section)
         
         serial_section.add_option(
             OptionDropdown(
                 serial_section.content_frame,
-                "Serieller Port",
+                "Serial port",
                 ["auto"] + [port.device for port in Serial.listPorts()], #todo: show device name
                 "auto",
                 command=lambda port: self._sensor.setPort(port) if self._sensor else None,
@@ -194,19 +194,19 @@ class UI(tkk.Tk):
             )
         )
 
-        messung_section = OptionSection(self._options_container, "Messung", persistent=True)
-        self._add_option(messung_section)
+        measurement_section = OptionSection(self._options_container, "Measurement", persistent=True)
+        self._add_option(measurement_section)
 
-        self._stream_toggle = OptionToggle(messung_section.content_frame, "Messdaten Streamen", initial=True, persistent=True)
-        messung_section.add_option(self._stream_toggle)
+        self._stream_toggle = OptionToggle(measurement_section.content_frame, "Stream measurements", initial=True, persistent=True)
+        measurement_section.add_option(self._stream_toggle)
 
         def set_freq(freq_str: str) -> None:
             self._measurement_rate = int(freq_str)
             
-        messung_section.add_option(
+        measurement_section.add_option(
             OptionDropdown(
-                messung_section.content_frame,
-                "Messintervall (ms)",
+                measurement_section.content_frame,
+                "Measurement interval (ms)",
                 ["50", "100", "200", "500", "1000", "2000"],
                 "100",
                 command=set_freq,
@@ -215,21 +215,21 @@ class UI(tkk.Tk):
             )
         )
 
-        messung_section.add_option(
+        measurement_section.add_option(
             OptionButton(
-                messung_section.content_frame, 
-                "Messen", 
+                measurement_section.content_frame, 
+                "Measure", 
                 command=self._update_measurement,
                 visibility=lambda: not self._stream_toggle.value.get()
             )
         )
         
-        display_section = OptionSection(self._options_container, "Anzeige", persistent=True)
+        display_section = OptionSection(self._options_container, "Display", persistent=True)
         self._add_option(display_section)
         
         self._auto_range_toggle = OptionToggle(
             display_section.content_frame, 
-            "Autom. Range", 
+            "Auto range", 
             initial=False,
             command=lambda _: self._rebuild_raster_fig(),
             persistent=True
@@ -238,7 +238,7 @@ class UI(tkk.Tk):
         
         self._log_scale_toggle = OptionToggle(
             display_section.content_frame, 
-            "Log. Maßstab", 
+            "Log scale", 
             initial=True,
             command=lambda _: self._rebuild_raster_fig(),
             persistent=True
@@ -247,14 +247,14 @@ class UI(tkk.Tk):
 
         self._4inch_toggle = OptionToggle(
             display_section.content_frame, 
-            "4 Zoll Wafer", 
+            "4-inch wafer", 
             initial=False,
             command=lambda _: self._rebuild_raster_fig(),
             persistent=True
         )
         display_section.add_option(self._4inch_toggle)
 
-        export_section = OptionSection(self._options_container, "Exportieren", persistent=True)
+        export_section = OptionSection(self._options_container, "Export", persistent=True)
         self._add_option(export_section)
         
         from lib.Export import is_usb_available, export_data
@@ -269,18 +269,18 @@ class UI(tkk.Tk):
         
         lbl = OptionLabel(
             export_section.content_frame,
-            text="Kein USB Speicher erkannt",
+            text="No USB storage detected",
             foreground="red",
             visibility=lambda: not is_usb_available()
         )
         export_section.add_option(lbl)
 
-        calibrate_section = OptionSection(self._options_container, "Kalibrierung", persistent=True)
+        calibrate_section = OptionSection(self._options_container, "Calibration", persistent=True)
         self._add_option(calibrate_section)
 
         self._raw_data_toggle = OptionToggle(
             calibrate_section.content_frame, 
-            "Rohdaten anzeigen", 
+            "Show raw data", 
             initial=False,
             command=lambda _: self._rebuild_raster_fig(),
             persistent=True
