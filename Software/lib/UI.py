@@ -96,7 +96,7 @@ class UI(tkk.Tk):
         self._main = tkk.Frame(self)
         self._main.pack(fill="both", expand=True)
 
-        self._right_panel_expanded = True
+        self._right_panel_expanded = False
 
         self._build_left_panel()
         self._build_right_panel()
@@ -165,6 +165,10 @@ class UI(tkk.Tk):
             bootstyle="secondary"
         )
         self._position_overlay_toggle_button()
+
+        if not self._right_panel_expanded:
+            self._right_panel.place_forget()
+            self._overlay_toggle_btn.configure(text="⮞ Show options")
 
         from ttkbootstrap.scrolled import ScrolledFrame
         self._options_container = ScrolledFrame(self._right_panel, autohide=True, bootstyle="round")
