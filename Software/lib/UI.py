@@ -39,7 +39,7 @@ class UI(tkk.Tk):
         sensor_active = self._sensor_active()
 
         # Rebuild layout if sensor connection state changed
-        if sensor_active != hasattr(self, '_tabview'):
+        if sensor_active != getattr(self, '_ui_sensor_state', None):
             self._build_left_panel()
 
         if not sensor_active or not hasattr(self, '_tabview') or self._fetching_data:
@@ -110,6 +110,8 @@ class UI(tkk.Tk):
         self._build_left_panel()
 
     def _build_left_panel(self) -> None:
+        sensor_active = self._sensor_active()
+
         if hasattr(self, '_left_panel'):
             for widget in self._left_panel.winfo_children():
                 widget.destroy()
@@ -117,117 +119,117 @@ class UI(tkk.Tk):
             self._left_panel = tkk.Frame(self._main, padding=10)
             self._left_panel.place(relx=0, rely=0, relwidth=1, relheight=1)
 
-        if not self._sensor_active():
-            error_label = tkk.Label(self._left_panel, text="No sensor detected", foreground="red")
-            error_label.pack(expand=True)
-            self._raster_canvas = None
-            if hasattr(self, '_tabview'):
-                delattr(self, '_tabview')
-        else:
-            self._tabview = tkk.Notebook(self._left_panel)
-            self._tabview.pack(fill="both", expand=True)
+        self._tabview = tkk.Notebook(self._left_panel)
+        self._tabview.pack(fill="both", expand=True)
 
-            # Raster view
-            self._frame_raster_container = tkk.Frame(self._tabview)
-            self._tabview.add(self._frame_raster_container, text="Raster view")
+        # Raster view
+        self._frame_raster_container = tkk.Frame(self._tabview)
+        self._tabview.add(self._frame_raster_container, text="Raster view")
 
-            self._raster_root = tkk.Frame(self._frame_raster_container)
-            self._raster_root.pack(fill="both", expand=True)
+        self._raster_root = tkk.Frame(self._frame_raster_container)
+        self._raster_root.pack(fill="both", expand=True)
 
-            self._raster_topbar = tkk.Frame(self._raster_root)
-            self._raster_topbar.pack(fill="x", padx=4, pady=(2, 4))
+        self._raster_topbar = tkk.Frame(self._raster_root)
+        self._raster_topbar.pack(fill="x", padx=4, pady=(2, 4))
 
-            self._options_toggle_btn = tkk.Button(
-                self._raster_topbar,
-                text="⮞ Show options",
-                command=self._toggle_options_panel,
-                bootstyle="secondary"
-            )
-            self._options_toggle_btn.pack(side="right")
+        self._options_toggle_btn = tkk.Button(
+            self._raster_topbar,
+            text="⮞ Show options",
+            command=self._toggle_options_panel,
+            bootstyle="secondary"
+        )
+        self._options_toggle_btn.pack(side="right")
 
-            self._raster_body = tkk.Frame(self._raster_root)
-            self._raster_body.pack(fill="both", expand=True)
-            self._raster_body.columnconfigure(0, weight=1)
-            self._raster_body.rowconfigure(0, weight=1)
+        self._raster_body = tkk.Frame(self._raster_root)
+        self._raster_body.pack(fill="both", expand=True)
+        self._raster_body.columnconfigure(0, weight=1)
+        self._raster_body.rowconfigure(0, weight=1)
 
-            self._plot_container = tkk.Frame(self._raster_body)
-            self._plot_container.grid(row=0, column=0, sticky="nsew")
+        self._plot_container = tkk.Frame(self._raster_body)
+        self._plot_container.grid(row=0, column=0, sticky="nsew")
 
-            self._options_panel = tkk.Frame(self._raster_body, padding=(10, 10, 10, 10), relief="ridge", borderwidth=1)
-            self._build_options_panel(self._options_panel)
-            self._apply_options_panel_visibility()
+        self._options_panel = tkk.Frame(self._raster_body, padding=(10, 10, 10, 10), relief="ridge", borderwidth=1)
+        self._build_options_panel(self._options_panel)
+        self._apply_options_panel_visibility()
 
-            # Calibration tab (empty for now)
-            self._frame_calibration = tkk.Frame(self._tabview)
-            self._tabview.add(self._frame_calibration, text="Calibration")
+        # Calibration tab (empty for now)
+        self._frame_calibration = tkk.Frame(self._tabview)
+        self._tabview.add(self._frame_calibration, text="Calibration")
 
-            # Settings tab (empty for now)
-            self._frame_settings = tkk.Frame(self._tabview)
-            self._tabview.add(self._frame_settings, text="Settings")
+        # Settings tab (empty for now)
+        self._frame_settings = tkk.Frame(self._tabview)
+        self._tabview.add(self._frame_settings, text="Settings")
 
-            # Settings content: connection options
-            self._settings_serial_port = OptionDropdown(
-                self._frame_settings,
-                "Serial port",
-                ["auto"] + [port.device for port in Serial.listPorts()],
-                "auto",
-                command=lambda port: self._sensor.setPort(port) if self._sensor else None,
-                persistent=True,
-            )
-            self._settings_serial_port.add_to(self._frame_settings)
+        # Settings content: connection options
+        self._settings_serial_port = OptionDropdown(
+            self._frame_settings,
+            "Serial port",
+            ["auto"] + [port.device for port in Serial.listPorts()],
+            "auto",
+            command=lambda port: self._sensor.setPort(port) if self._sensor else None,
+            persistent=True,
+        )
+        self._settings_serial_port.add_to(self._frame_settings)
 
-            self._settings_wafer_dia = OptionDropdown(
-                self._frame_settings,
-                "Wafer diameter (mm)",
-                [str(v) for v in range(50, 151, 10)],
-                "150",
-                command=lambda _v: self._rebuild_raster_fig(),
-                persistent=True,
-            )
-            self._settings_wafer_dia.add_to(self._frame_settings)
+        self._settings_wafer_dia = OptionDropdown(
+            self._frame_settings,
+            "Wafer diameter (mm)",
+            [str(v) for v in range(50, 151, 10)],
+            "150",
+            command=lambda _v: self._rebuild_raster_fig(),
+            persistent=True,
+        )
+        self._settings_wafer_dia.add_to(self._frame_settings)
 
-            self._settings_hide_outside_circle = OptionToggle(
-                self._frame_settings,
-                "Mask values outside wafer dia.",
-                initial=False,
-                command=lambda _: self._rebuild_raster_fig(),
-                persistent=True,
-            )
-            self._settings_hide_outside_circle.add_to(self._frame_settings)
+        self._settings_hide_outside_circle = OptionToggle(
+            self._frame_settings,
+            "Mask values outside wafer dia.",
+            initial=False,
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True,
+        )
+        self._settings_hide_outside_circle.add_to(self._frame_settings)
 
-            self._color_schemes = getColorSchemes()
-            scheme_names = list(self._color_schemes.keys())
+        self._color_schemes = getColorSchemes()
+        scheme_names = list(self._color_schemes.keys())
 
-            self._settings_color_scheme = OptionDropdown(
-                self._frame_settings,
-                "Color scheme",
-                scheme_names,
-                scheme_names[0] if scheme_names else "Grayscale",
-                command=lambda _v: self._rebuild_raster_fig(),
-                persistent=True,
-            )
-            self._settings_color_scheme.add_to(self._frame_settings)
+        self._settings_color_scheme = OptionDropdown(
+            self._frame_settings,
+            "Color scheme",
+            scheme_names,
+            scheme_names[0] if scheme_names else "Grayscale",
+            command=lambda _v: self._rebuild_raster_fig(),
+            persistent=True,
+        )
+        self._settings_color_scheme.add_to(self._frame_settings)
 
-            self._settings_use_clipping_colors = OptionToggle(
-                self._frame_settings,
-                "Use clipping colors",
-                initial=True,
-                command=lambda _: self._rebuild_raster_fig(),
-                persistent=True,
-            )
-            self._settings_use_clipping_colors.add_to(self._frame_settings)
+        self._settings_use_clipping_colors = OptionToggle(
+            self._frame_settings,
+            "Use clipping colors",
+            initial=True,
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True,
+        )
+        self._settings_use_clipping_colors.add_to(self._frame_settings)
 
-            self._settings_show_orientation_hint = OptionToggle(
-                self._frame_settings,
-                "Show orientation hint",
-                initial=True,
-                command=lambda _: self._rebuild_raster_fig(),
-                persistent=True,
-            )
-            self._settings_show_orientation_hint.add_to(self._frame_settings)
+        self._settings_show_orientation_hint = OptionToggle(
+            self._frame_settings,
+            "Show orientation hint",
+            initial=True,
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True,
+        )
+        self._settings_show_orientation_hint.add_to(self._frame_settings)
 
-            # Build plot last, after all UI elements and settings are in place.
+        # Build plot last, after all UI elements and settings are in place.
+        if sensor_active:
             self._rebuild_raster_fig()
+        else:
+            self._raster_canvas = None
+            disabled_label = tkk.Label(self._plot_container, text="No sensor detected", foreground="red")
+            disabled_label.pack(expand=True)
+
+        self._ui_sensor_state = sensor_active
 
     def _rebuild_raster_fig(self) -> None:
         if not self._sensor_active():
