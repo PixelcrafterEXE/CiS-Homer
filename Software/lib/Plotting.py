@@ -3,33 +3,53 @@ from matplotlib.figure import Figure
 import matplotlib.colors as mcolors
 from matplotlib.collections import LineCollection
 from matplotlib.patches import Circle
-import tkinter as tk
-import ttkbootstrap as tkk
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox, TextArea, VPacker
+import matplotlib.image as mpimg
+import os
 
 class RasterFigure(Figure):
     def __init__(
         self,
         data: np.ndarray,
         autoRange: bool = False,
+        rangeMode: str | None = None,
         logRange: bool = True,
         showValues: bool = False,
         waferDiameterMm: float = 150.0,
         gridDiameterMm: float = 150.0,
         MaskWafer: bool = False,
+        colorScheme: list[str] | tuple[str, ...] | None = None,
+        underColor: str = 'black',
+        overColor: str = 'white',
+        showOrientationHint: bool = True,
+        manualLo: float | None = None,
+        manualHi: float | None = None,
+        onManualRangeChange=None,
         *args,
         **kwargs,
     ):
         kwargs.setdefault('figsize', (8, 6))
         super().__init__(*args, **kwargs)
         
-        self.autoRange = autoRange
+        self.rangeMode = (rangeMode or ("auto" if autoRange else "manual")).lower()
+        if self.rangeMode not in ("auto", "manual", "max"):
+            self.rangeMode = "manual"
+        self.autoRange = self.rangeMode == "auto"
         self.logRange = logRange
         self.showValues = showValues
         self.waferDiameterMm = waferDiameterMm
         self.gridDiameterMm = gridDiameterMm if gridDiameterMm > 0 else 150.0
         self.hideOutsideCircle = MaskWafer
+        self.colorScheme = list(colorScheme) if colorScheme else ['black', 'white']
+        if len(self.colorScheme) == 1:
+            self.colorScheme = [self.colorScheme[0], self.colorScheme[0]]
+        self.underColor = underColor
+        self.overColor = overColor
+        self.showOrientationHint = showOrientationHint
+        self._on_manual_range_change = onManualRangeChange
         self._value_texts = []
         self._outline_circle = None
+        self._stats_text = None
         self.subplots_adjust(left=0.01, right=0.95, top=0.98, bottom=0.02, wspace=0.05)
         
         ax, cax = self.subplots(1, 2, gridspec_kw={'width_ratios': [15, 1]})
@@ -40,8 +60,20 @@ class RasterFigure(Figure):
         nan_mask = np.isnan(data)
         valid_vals = data[~nan_mask]
 
-        lo = float(valid_vals.min()) if autoRange and len(valid_vals) else (1.0 if logRange else 0.0)
-        hi = float(valid_vals.max()) if autoRange and len(valid_vals) else 65535.0
+        base_lo = 1.0 if logRange else 0.0
+        base_hi = 65535.0
+        eps = 1e-6
+
+        if self.rangeMode == "auto":
+            lo = float(valid_vals.min()) if len(valid_vals) else base_lo
+            hi = float(valid_vals.max()) if len(valid_vals) else base_hi
+        elif self.rangeMode == "max":
+            lo, hi = base_lo, base_hi
+        else:
+            lo = float(manualLo) if manualLo is not None else base_lo
+            hi = float(manualHi) if manualHi is not None else base_hi
+            lo = float(np.clip(lo, base_lo, base_hi - eps))
+            hi = float(np.clip(hi, lo + eps, base_hi))
 
         def make_cmap(lo, hi):
             if self.logRange:
@@ -50,11 +82,42 @@ class RasterFigure(Figure):
                 hi_n = (np.log10(max(hi, 1)) - np.log10(1)) / log_rng
             else:
                 lo_n, hi_n = lo / 65535.0, hi / 65535.0
-            lo_n = float(np.clip(lo_n, 0.0, 1.0))
-            hi_n = float(np.clip(hi_n, lo_n + 1e-6, 1.0))
+            lo_n = float(np.clip(lo_n, 0.0, 1.0 - eps))
+            hi_n = float(np.clip(hi_n, lo_n + eps, 1.0))
+
+            stops: list[tuple[float, str]] = [
+                (0.0, self.underColor),
+                (lo_n, self.underColor),
+            ]
+
+            scheme_count = len(self.colorScheme)
+            for idx, color in enumerate(self.colorScheme):
+                t = idx / (scheme_count - 1)
+                pos = lo_n + t * (hi_n - lo_n)
+                stops.append((float(pos), color))
+
+            stops.extend([
+                (hi_n, self.overColor),
+                (1.0, self.overColor),
+            ])
+
+            # Matplotlib requires strictly increasing x positions.
+            clean_stops: list[tuple[float, str]] = []
+            last_x = -1.0
+            for x, color in stops:
+                x = float(np.clip(x, 0.0, 1.0))
+                if x <= last_x:
+                    if last_x >= 1.0 - eps:
+                        continue
+                    x = last_x + eps
+                clean_stops.append((x, color))
+                last_x = x
+
             cmap = mcolors.LinearSegmentedColormap.from_list(
-                'raster', [(0.0, 'black'), (lo_n, 'black'), (hi_n, 'white'), (1.0, 'white')], N=65536
+                'raster', clean_stops, N=65536
             )
+            cmap.set_under(self.underColor)
+            cmap.set_over(self.overColor)
             cmap.set_bad('none')
             return cmap
         
@@ -81,13 +144,16 @@ class RasterFigure(Figure):
             ax.add_collection(LineCollection(segs, colors='black', lw=0.5))
 
         self._draw_outline_circle(rows, cols)
+        if self.showOrientationHint:
+            self._draw_orientation_hint()
+        self._create_stats_text(data)
 
         self.colorbar(self.im, cax=cax)
 
         if self.showValues:
             self._create_value_texts(data)
 
-        if not autoRange:
+        if self.rangeMode == "manual":
             self.state = {'drag': None, 'lo': lo, 'hi': hi}
             y_trans = cax.get_yaxis_transform()
             # Draw lines with circular markers extending to the left (x=0) 
@@ -119,6 +185,13 @@ class RasterFigure(Figure):
                 else:
                     self.state['hi'] = max(y, self.state['lo'] * 1.001 if logRange else self.state['lo'] + 1)
                     self.hi_line.set_ydata([self.state['hi']] * 2)
+
+                if self._on_manual_range_change:
+                    try:
+                        self._on_manual_range_change(self.state['lo'], self.state['hi'])
+                    except Exception:
+                        pass
+
                 self.im.set_cmap(make_cmap(self.state['lo'], self.state['hi']))
                 if self.showValues:
                     self._update_value_texts(np.asarray(self.im.get_array(), dtype=float))
@@ -159,6 +232,83 @@ class RasterFigure(Figure):
         else:
             self._outline_circle.center = (center_x, center_y)
             self._outline_circle.set_radius(radius)
+
+    def _draw_orientation_hint(self) -> None:
+        hint_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "res", "OrientHint.png")
+        )
+        if not os.path.exists(hint_path):
+            return
+
+        try:
+            hint_img = mpimg.imread(hint_path)
+            image_box = OffsetImage(hint_img, zoom=0.14)
+            label_box = TextArea("Orientation:", textprops={"fontsize": 9})
+            packed_box = VPacker(children=[label_box, image_box], align="center", pad=0, sep=2)
+            hint_artist = AnnotationBbox(
+                packed_box,
+                (0.02, 0.02),
+                xycoords='figure fraction',
+                frameon=False,
+                box_alignment=(0, 0),
+                zorder=5,
+            )
+            self.add_artist(hint_artist)
+        except Exception:
+            # Non-critical visual element; ignore load/render issues.
+            pass
+
+    def _create_stats_text(self, data: np.ndarray, unmapped: dict[int, int] | None = None) -> None:
+        self._stats_text = self.text(
+            0.02,
+            0.98,
+            "",
+            transform=self.transFigure,
+            ha='left',
+            va='top',
+            fontsize=9,
+            bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.75, "edgecolor": "none"},
+            zorder=6,
+        )
+        self._update_stats_text(data, unmapped)
+
+    def _update_stats_text(self, data: np.ndarray, unmapped: dict[int, int] | None = None) -> None:
+        if self._stats_text is None:
+            return
+
+        unmapped = unmapped or {}
+
+        def format_unmapped_lines(values: dict[int, int]) -> str:
+            ch8 = values.get(8)
+            ch33 = values.get(33)
+            ch52 = values.get(52)
+            return (
+                f"NTC1 (CH8): {'-' if ch8 is None else ch8}\n"
+                f"NTC2 (CH33): {'-' if ch33 is None else ch33}\n"
+                f"Reference Diode (CH52): {'-' if ch52 is None else ch52}"
+            )
+
+        valid = data[~np.isnan(data)]
+        if valid.size == 0:
+            base_text = "Median: -\nMean: -\nHomogenität: -"
+            self._stats_text.set_text(f"{base_text}\n{format_unmapped_lines(unmapped)}")
+            return
+
+        median = float(np.median(valid))
+        mean = float(np.mean(valid))
+        vmin = float(np.min(valid))
+        vmax = float(np.max(valid))
+        denom = vmax + vmin
+        homo = ((vmax - vmin) / denom) if denom != 0 else float('nan')
+
+        homo_text = "-" if np.isnan(homo) else f"{homo:.4f}"
+        stats_text = (
+            f"Median: {median:.1f}\n"
+            f"Mean: {mean:.1f}\n"
+            f"Homogeneity: {homo_text}"
+        )
+        stats_text += f"\n{format_unmapped_lines(unmapped)}"
+        self._stats_text.set_text(stats_text)
 
     def _circle_geometry(self, rows: int, cols: int) -> tuple[float, float, float]:
         center_x = (cols - 1) / 2.0
@@ -218,7 +368,7 @@ class RasterFigure(Figure):
                     luminance = 0.0
                 txt.set_color('white' if luminance < 0.5 else 'black')
 
-    def update_data(self, data: np.ndarray) -> None:
+    def update_data(self, data: np.ndarray, unmapped: dict[int, int] | None = None) -> None:
         data_float = data.astype(float)
         data_float = self._mask_outside_circle(data_float)
         self.im.set_data(data_float)
@@ -231,6 +381,7 @@ class RasterFigure(Figure):
             hi = float(valid_vals.max()) if len(valid_vals) else 65535.0
             self.im.set_cmap(self.make_cmap(lo, hi))
 
+        self._update_stats_text(data_float, unmapped)
         self._update_value_texts(data_float)
             
         if hasattr(self, 'canvas') and self.canvas:

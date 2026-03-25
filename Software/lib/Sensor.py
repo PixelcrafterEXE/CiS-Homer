@@ -58,7 +58,7 @@ positions = [
     (3, 3),   # 49
     (3, 1),   # 50
     (3, -2),  # 51
-    None,     # 52 (Refference Diode)
+    None,     # 52 (Reference Diode)
     (1, -1),  # 53
     (0, -4),  # 54
     (-2, 0),  # 55
@@ -76,7 +76,7 @@ positions = [
 
 def listPorts() -> list:
     '''gets all serial ports with attached devices'''
-    return [port for port in list_ports.comports()]
+    return list(list_ports.comports())
 
 class Sensor:
     def __init__(self, port: str = "auto", baud: int = 115200, device_id: str = "0403:6015"):
@@ -284,12 +284,20 @@ class Sensor:
 
         return np.frombuffer(bytes(data), dtype="<u2", count=64).astype(np.uint16, copy=True)
 
-    def getMap(self, calibrated: bool = False) -> np.ndarray:
-        '''returns the latest sensor frame mapped to a 9x9 grid.'''
+    def getMap(self, calibrated: bool = False, return_unmapped: bool = False):
+        '''returns the latest sensor frame mapped to a 9x9 grid.
+        If return_unmapped is True, also returns a dict of unmapped channel values.'''
         raw = self.getCalibrated() if calibrated else self.getRaw()
         array = np.full((9, 9), np.nan)
+        unmapped: dict[int, int] = {}
         for i, pos in enumerate(positions):
+            channel = i + 1
             if pos is not None:
                 array[pos[1] + 4, pos[0] + 4] = raw[i]
+            else:
+                unmapped[channel] = int(raw[i])
+
+        if return_unmapped:
+            return array, unmapped
         return array
             

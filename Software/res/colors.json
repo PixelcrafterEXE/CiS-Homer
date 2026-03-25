@@ -1,0 +1,42 @@
+{
+    "Blue-Red": {
+        "colors": [
+            "#0000FF",
+            "#FFFFFF",
+            "#FF0000"
+        ],
+        "under": "#000000",
+        "over": "#FFFF00"
+    },
+    "Grayscale": {
+        "colors": [
+            "#000000",
+            "#FFFFFF"
+        ],
+        "under": "#FFFF00",
+        "over": "#FF0000"
+    },
+    "Viridis": {
+        "colors": [
+            "#440154",
+            "#3B528B",
+            "#21908C",
+            "#5DC863",
+            "#FDE725"
+        ],
+        "under": "#000000",
+        "over": "#FFFFFF"
+    },
+    "Inferno": {
+        "colors": [
+            "#000004",
+            "#420A68",
+            "#932667",
+            "#DD513A",
+            "#FCA50A",
+            "#FCFFA4"
+        ],
+        "under": "#000000",
+        "over": "#FFFFFF"
+    }
+}
