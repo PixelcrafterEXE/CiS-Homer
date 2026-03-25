@@ -34,7 +34,7 @@ def fit_ntc_polynomial(
 
 def resistance_from_reading(reading: float) -> float:
 	"""Convert ADC reading (0..65535) to NTC resistance in Ohms."""
-	raise NotImplementedError("Implement ADC-to-resistance conversion for your circuit.")
+	raise NotImplementedError("ADC-to-resistance conversion not implemented yet.")
 
 def temperature_from_resistance(resistance_ohm: float, poly: np.poly1d) -> float:
 	"""Calculate temperature in °C from resistance in Ohms."""

@@ -6,8 +6,6 @@ from matplotlib.patches import Circle
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox, TextArea, VPacker
 import matplotlib.image as mpimg
 import os
-import tkinter as tk
-import ttkbootstrap as tkk
 
 class RasterFigure(Figure):
     def __init__(
