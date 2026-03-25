@@ -98,9 +98,13 @@ class UI(tkk.Tk):
 
         self._right_panel_expanded = False
 
-        self._build_left_panel()
         self._build_right_panel()
+        self._build_left_panel()
 
+        # Left panel is built after overlay; ensure overlay controls stay on top.
+        self._position_overlay_toggle_button()
+        if self._right_panel_expanded:
+            self._right_panel.lift()
         # Keep floating controls correctly positioned and on top when resizing
         self.bind("<Configure>", self._on_window_configure)
 
