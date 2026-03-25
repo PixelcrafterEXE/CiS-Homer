@@ -10,7 +10,6 @@ This repository contains the source code, documentation, and build tools for the
 | :--- | :--- |
 | **./Docs** | Contains all project documentation. |
 | **./Software** | Python implementation of the core system. |
-| **./Tests** | All unit tests for the software suite. |
 | **./Firmware** | Code and scripts to generate the Raspberry Pi device image. |
 
 ---
