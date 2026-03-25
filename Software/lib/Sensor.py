@@ -163,21 +163,20 @@ class Sensor:
         if self._running:
             self._timer = threading.Timer(0.1, self._pollSerial)
             self._timer.start()
-    
+
     def _read_64_channels(self, command: bytes) -> np.ndarray:
-        '''requests one frame of 64 channels data and returns it as a numpy array with dtype uint16.'''
+        '''requests one frame of 64 channels data and returns it as a numpy array.'''
         ser = self.ser
         if ser is None or not ser.is_open:
             raise RuntimeError("Serial connection is not open.")
 
-        # Discard stale bytes and request one frame.
         ser.reset_input_buffer()
         print(f"[SERIAL OUT] write: {command!r}")
         ser.write(command)
         ser.flush()
 
-        # Parse tokens of the form "<channel>:<value>" until all 64 channels are available.
-        pattern = re.compile(r"(\d+)\s*:\s*(\d+)")
+        # UPDATED REGEX: Added -? to allow for negative values
+        pattern = re.compile(r"(\d+)\s*:\s*(-?\d+)")
         values = {}
         remainder = ""
 
@@ -188,7 +187,6 @@ class Sensor:
                 if not chunk:
                     continue
 
-                print(f"[SERIAL IN] read: {chunk!r}")
                 text = remainder + chunk.decode("ascii", errors="ignore")
                 parts = re.split(r"[\r\n]+", text)
                 remainder = parts.pop() if parts else ""
@@ -200,7 +198,6 @@ class Sensor:
                         if 1 <= idx <= 64:
                             values[idx] = val
 
-            # Also parse a potential final line even if it has no trailing newline.
             for m in pattern.finditer(remainder):
                 idx = int(m.group(1))
                 val = int(m.group(2))
@@ -215,10 +212,11 @@ class Sensor:
                 missing = [i for i in range(1, 65) if i not in values]
                 raise ValueError(f"Incomplete sensor frame, missing channels: {missing}")
 
-            return np.array([values[i] for i in range(1, 65)], dtype=np.uint16)
+            # UPDATED DTYPE: Changed to int32 to safely store negative offsets
+            return np.array([values[i] for i in range(1, 65)], dtype=np.int32)
         except Exception as e:
-            raise RuntimeError(f"Failed to read sensor data: {e}")
-
+            raise RuntimeError(f"Failed to read sensor data: {e}") 
+   
     def getRaw(self) -> np.ndarray:
         '''ADC Rohwerte auslesen für alle FD Kanäle (r)'''
         return self._read_64_channels(b"r")
