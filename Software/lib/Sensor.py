@@ -290,6 +290,6 @@ class Sensor:
         array = np.full((9, 9), np.nan)
         for i, pos in enumerate(positions):
             if pos is not None:
-                array[pos[0] + 4, pos[1] + 4] = raw[i]
+                array[pos[1] + 4, pos[0] + 4] = raw[i]
         return array
             
