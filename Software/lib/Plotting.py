@@ -58,8 +58,9 @@ class RasterFigure(Figure):
                 hi_n = (np.log10(max(hi, 1)) - np.log10(1)) / log_rng
             else:
                 lo_n, hi_n = lo / 65535.0, hi / 65535.0
-            lo_n = float(np.clip(lo_n, 0.0, 1.0))
-            hi_n = float(np.clip(hi_n, lo_n + 1e-6, 1.0))
+            eps = 1e-6
+            lo_n = float(np.clip(lo_n, 0.0, 1.0 - eps))
+            hi_n = float(np.clip(hi_n, lo_n + eps, 1.0))
 
             stops: list[tuple[float, str]] = [
                 (0.0, self.underColor),
@@ -77,8 +78,20 @@ class RasterFigure(Figure):
                 (1.0, self.overColor),
             ])
 
+            # Matplotlib requires strictly increasing x positions.
+            clean_stops: list[tuple[float, str]] = []
+            last_x = -1.0
+            for x, color in stops:
+                x = float(np.clip(x, 0.0, 1.0))
+                if x <= last_x:
+                    if last_x >= 1.0 - eps:
+                        continue
+                    x = last_x + eps
+                clean_stops.append((x, color))
+                last_x = x
+
             cmap = mcolors.LinearSegmentedColormap.from_list(
-                'raster', stops, N=65536
+                'raster', clean_stops, N=65536
             )
             cmap.set_under(self.underColor)
             cmap.set_over(self.overColor)
