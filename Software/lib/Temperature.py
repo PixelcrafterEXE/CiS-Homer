@@ -39,7 +39,7 @@ def resistance_from_reading(reading: float) -> float:
 	R64 = 5100
 	R59 = 10000
 	R63 = 10000
-	Ua = 5 * reading / 65535  # Ua in Volts
+	Ua = Vdd * reading / 65535  # Ua in Volts
 	RNTC=(R59*R64*(R60*Vdd - R63*Ua + R63*Vdd)/(R63*(R59*Ua + R60*Vdd))) # siehe NTC.m
 	#print(f"Reading: {reading}, Ua: {Ua:.3f} V, RNTC: {RNTC:.2f} Ohm")
 	return RNTC
