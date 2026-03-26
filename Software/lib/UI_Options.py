@@ -43,7 +43,6 @@ class OptionLabel(Option):
         label = tkk.Label(self, text=text, foreground=foreground)
         label.grid(row=0, column=0, sticky="w")
 
-
 class OptionToggle(Option):
     def __init__(
         self,
@@ -72,7 +71,6 @@ class OptionToggle(Option):
 
         toggle = tkk.Checkbutton(self, variable=self.value, command=_on_toggle, bootstyle="round-toggle")
         toggle.grid(row=0, column=1, sticky="e")
-
 
 class OptionDropdown(Option):
     def __init__(
@@ -110,7 +108,34 @@ class OptionDropdown(Option):
                 command(self.value.get())
 
         dropdown.bind("<<ComboboxSelected>>", _on_select)
-
+    
+    def _on_resize(self, event) -> None:
+        """Handle canvas resize"""
+        self._draw_slider()
+    
+    def _on_click(self, event) -> None:
+        """Handle mouse click on slider"""
+        self.dragging = True
+        new_val = self._value_from_x(event.x)
+        self.value.set(new_val)
+        self._draw_slider()
+        self._fire_command()
+    
+    def _on_drag(self, event) -> None:
+        """Handle mouse drag"""
+        if self.dragging:
+            new_val = self._value_from_x(event.x)
+            self.value.set(new_val)
+            self._draw_slider()
+            # Don't fire command on every drag event to avoid spam
+    
+    def _on_release(self, event) -> None:
+        """Handle mouse release"""
+        if self.dragging:
+            self.dragging = False
+            self._fire_command()
+            if self.persistent:
+                setCFGKey(self.config_key, self.value.get())
 
 class OptionSection(Option):
     def __init__(
