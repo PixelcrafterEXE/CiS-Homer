@@ -41,7 +41,7 @@ class UI(tkk.Tk):
 
         # Rebuild layout if sensor connection state changed
         if sensor_active != getattr(self, '_ui_sensor_state', None):
-            self._build_left_panel()
+            self._build_main_panel()
 
         if not sensor_active or not hasattr(self, '_tabview') or self._fetching_data:
             return
@@ -63,7 +63,7 @@ class UI(tkk.Tk):
                     except Exception:
                         pass
                     self._sensor.ser = None
-                self.after(0, self._build_left_panel)
+                self.after(0, self._build_main_panel)
             finally:
                 self._fetching_data = False
                 
@@ -109,19 +109,19 @@ class UI(tkk.Tk):
         if not hasattr(self, '_options_panel_visible'):
             self._options_panel_visible = False
 
-        self._build_left_panel()
+        self._build_main_panel()
 
-    def _build_left_panel(self) -> None:
+    def _build_main_panel(self) -> None:
         sensor_active = self._sensor_active()
 
-        if hasattr(self, '_left_panel'):
-            for widget in self._left_panel.winfo_children():
+        if hasattr(self, '_main_panel'):
+            for widget in self._main_panel.winfo_children():
                 widget.destroy()
         else:
-            self._left_panel = tkk.Frame(self._main, padding=10)
-            self._left_panel.place(relx=0, rely=0, relwidth=1, relheight=1)
+            self._main_panel = tkk.Frame(self._main, padding=10)
+            self._main_panel.place(relx=0, rely=0, relwidth=1, relheight=1)
 
-        self._tabview = tkk.Notebook(self._left_panel)
+        self._tabview = tkk.Notebook(self._main_panel)
         self._tabview.pack(fill="both", expand=True)
 
         # Raster view
@@ -134,21 +134,21 @@ class UI(tkk.Tk):
         self._raster_topbar = tkk.Frame(self._raster_root)
         self._raster_topbar.pack(fill="x", padx=4, pady=(2, 4))
 
+        self._raster_body = tkk.Frame(self._raster_root)
+        self._raster_body.pack(fill="both", expand=True)
+        self._raster_body.columnconfigure(0, weight=1)
+        self._raster_body.rowconfigure(0, weight=1)     
+
+        self._plot_container = tkk.Frame(self._raster_body)
+        self._plot_container.grid(row=0, column=0, sticky="nsew")
+
         self._options_toggle_btn = tkk.Button(
-            self._raster_topbar,
+            self._raster_body,
             text="⮞ Show options",
             command=self._toggle_options_panel,
             bootstyle="secondary"
         )
-        self._options_toggle_btn.pack(side="right")
-
-        self._raster_body = tkk.Frame(self._raster_root)
-        self._raster_body.pack(fill="both", expand=True)
-        self._raster_body.columnconfigure(0, weight=1)
-        self._raster_body.rowconfigure(0, weight=1)
-
-        self._plot_container = tkk.Frame(self._raster_body)
-        self._plot_container.grid(row=0, column=0, sticky="nsew")
+        self._options_toggle_btn.grid(row=1, column=0, sticky="ew", pady=(8, 0))
 
         self._options_panel = tkk.Frame(self._raster_body, padding=(10, 10, 10, 10), relief="ridge", borderwidth=1)
         self._build_options_panel(self._options_panel)
@@ -158,7 +158,6 @@ class UI(tkk.Tk):
         self._frame_calibration = tkk.Frame(self._tabview)
         self._tabview.add(self._frame_calibration, text="Calibration")
 
-        # Settings tab (empty for now)
         self._frame_settings = tkk.Frame(self._tabview)
         self._tabview.add(self._frame_settings, text="Settings")
 
@@ -392,7 +391,7 @@ class UI(tkk.Tk):
             return
 
         if self._options_panel_visible:
-            self._options_panel.grid(row=0, column=1, sticky="nsew")
+            self._options_panel.grid(row=2, column=0, sticky="nsew")
             self._options_toggle_btn.configure(text="⮜ Hide options")
         else:
             self._options_panel.grid_forget()
