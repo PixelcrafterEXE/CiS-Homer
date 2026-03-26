@@ -206,7 +206,7 @@ class Sensor:
                     values[idx] = val
 
             #print(f"[SERIAL OUT] write: {b'x\r'!r}")
-            ser.write(b"x\r")
+            ser.write(b"x")
             ser.flush()
 
             if len(values) != 64:
@@ -254,7 +254,7 @@ class Sensor:
             raise ValueError("Calibration payload must be exactly 128 bytes (64 x 2 bytes)")
 
         # Stop potential stream and clear stale data before binary command.
-        self.ser.write(b"x\r")
+        self.ser.write(b"x")
         self.ser.flush()
         time.sleep(0.05)
         self.ser.reset_input_buffer()
@@ -269,7 +269,7 @@ class Sensor:
             raise RuntimeError("Serial connection is not open.")
 
         # Stop potential stream and clear stale data before binary command.
-        self.ser.write(b"x\r")
+        self.ser.write(b"x")
         self.ser.flush()
         time.sleep(0.05)
         self.ser.reset_input_buffer()

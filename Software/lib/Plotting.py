@@ -7,6 +7,8 @@ from matplotlib.offsetbox import OffsetImage, AnnotationBbox, TextArea, VPacker
 import matplotlib.image as mpimg
 import os
 
+from lib.Temperature import fit_ntc_polynomial, temperature_from_reading
+
 class RasterFigure(Figure):
     def __init__(
         self,
@@ -283,8 +285,8 @@ class RasterFigure(Figure):
             ch33 = values.get(33)
             ch52 = values.get(52)
             return (
-                f"NTC1 (CH8): {'-' if ch8 is None else ch8}\n"
-                f"NTC2 (CH33): {'-' if ch33 is None else ch33}\n"
+                f"NTC1 (CH8): {'-' if ch8 is None else f'{temperature_from_reading(ch8, fit_ntc_polynomial()):.1f}'} °C\n"
+                f"NTC2 (CH33): {'-' if ch33 is None else f'{temperature_from_reading(ch33, fit_ntc_polynomial()):.1f}'} °C\n"
                 f"Reference Diode (CH52): {'-' if ch52 is None else ch52}"
             )
 
