@@ -28,6 +28,7 @@ class UI(tkk.Tk):
         self._measurement_loop()
 
     def _sensor_active(self) -> bool:
+        '''Helper to check if sensor connection is active and open.'''
         return bool(self._sensor and self._sensor.ser and self._sensor.ser.is_open)
 
     def _measurement_loop(self) -> None:
@@ -99,6 +100,7 @@ class UI(tkk.Tk):
     def buildUI(self) -> None:
         self.title("CiS HomeRPI")
         #self.attributes("-fullscreen", True)
+        self.geometry("800x1280")
 
         # Main container
         self._main = tkk.Frame(self)
@@ -371,16 +373,9 @@ class UI(tkk.Tk):
         calibrate_section = OptionSection(self._options_container, "Calibration", persistent=True)
         self._add_option(calibrate_section)
 
-        measure_offset_btn = OptionButton(
-            calibrate_section.content_frame,
-            "Measure Offset",
-            command=lambda: self._sensor.measureOffset()
-        )
-        calibrate_section.add_option(measure_offset_btn)
-
         self._data_source_dropdown = OptionDropdown(
             calibrate_section.content_frame, 
-            "Data source",
+            "Data source", #this will be changed to raw, corrected and value (mW/cm²) 
             ["raw", "calibrated", "offset"],
             "raw",
             command=lambda _v: self._update_measurement(),
