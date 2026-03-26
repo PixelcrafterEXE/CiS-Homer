@@ -41,7 +41,7 @@ def resistance_from_reading(reading: float) -> float:
 	R63 = 10000
 	Ua = 5 * reading / 65535  # Ua in Volts
 	RNTC=(R59*R64*(R60*Vdd - R63*Ua + R63*Vdd)/(R63*(R59*Ua + R60*Vdd))) # siehe NTC.m
-	print(f"Reading: {reading}, Ua: {Ua:.3f} V, RNTC: {RNTC:.2f} Ohm")
+	#print(f"Reading: {reading}, Ua: {Ua:.3f} V, RNTC: {RNTC:.2f} Ohm")
 	return RNTC
 
 def temperature_from_resistance(resistance_ohm: float, poly: np.poly1d) -> float:
