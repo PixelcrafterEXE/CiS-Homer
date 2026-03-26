@@ -277,6 +277,12 @@ class UI(tkk.Tk):
             onManualRangeChange=self._store_manual_range,
         )
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._plot_container)
+
+        if hasattr(self._raster_fig, 'figure'):
+            self._raster_fig.figure.tight_layout()
+        else:
+            self._raster_fig.tight_layout()
+
         self._raster_canvas.draw()
         self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
 
