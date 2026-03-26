@@ -156,8 +156,13 @@ class UI(tkk.Tk):
         self._frame_settings = tkk.Frame(self._tabview)
         self._tabview.add(self._frame_settings, text="Settings")
 
-        # ... (Settings content remains largely the same) ...
         self._setup_settings_tab()
+
+        # Calibration tab
+        self._frame_calibration = tkk.Frame(self._tabview)
+        self._tabview.add(self._frame_calibration, text="Calibration")
+
+        self._setup_calibration_tab()
 
         if sensor_active:
             self._rebuild_raster_fig()
@@ -185,6 +190,26 @@ class UI(tkk.Tk):
         scheme_names = list(self._color_schemes.keys())
         OptionDropdown(self._frame_settings, "Color scheme", scheme_names, scheme_names[0] if scheme_names else "Grayscale",
                        command=lambda _v: self._rebuild_raster_fig(), persistent=True).add_to(self._frame_settings)
+        self._settings_use_clipping_colors = OptionToggle(
+            self._frame_settings,
+            "Use clipping colors",
+            initial=True,
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True,
+        )
+        self._settings_use_clipping_colors.add_to(self._frame_settings)
+
+        self._settings_show_orientation_hint = OptionToggle(
+            self._frame_settings,
+            "Show orientation hint",
+            initial=True,
+            command=lambda _: self._rebuild_raster_fig(),
+            persistent=True,
+        )
+        self._settings_show_orientation_hint.add_to(self._frame_settings)
+
+    def _setup_calibration_tab(self) -> None:
+        pass
 
     def _build_options_panel(self, parent) -> None:
         self._options = []
@@ -210,12 +235,6 @@ class UI(tkk.Tk):
         self._stream_toggle = OptionToggle(col_meas, "Stream measurements", initial=True, persistent=True)
         self._add_option(self._stream_toggle, col_meas)
 
-        self._data_source_dropdown = OptionDropdown(
-            col_meas, "Data source", ["raw", "calibrated", "offset"], "raw",
-            command=lambda _v: self._update_measurement(), persistent=True
-        )
-        self._add_option(self._data_source_dropdown, col_meas)
-
         self._add_option(OptionDropdown(
             col_meas, "Interval (ms)", ["50", "100", "200", "500", "1000"], "100",
             command=lambda f: setattr(self, '_measurement_rate', int(f)),
@@ -226,6 +245,12 @@ class UI(tkk.Tk):
             col_meas, "Manual Measure", command=self._update_measurement,
             visibility=lambda: not self._stream_toggle.value.get()
         ), col_meas)
+
+        self._data_source_dropdown = OptionDropdown(
+            col_meas, "Data source", ["raw", "calibrated", "offset"], "raw",
+            command=lambda _v: self._update_measurement(), persistent=True
+        )
+        self._add_option(self._data_source_dropdown, col_meas)
 
         # --- COLUMN 2: DISPLAY ---
         col_disp = tkk.LabelFrame(cols_container, text=" Display ")
