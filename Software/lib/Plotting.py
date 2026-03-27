@@ -156,31 +156,35 @@ class RasterFigure(Figure):
             self._create_value_texts(data)
 
         if self.rangeMode == "manual":
-            self.state = {'drag': None, 'lo': lo, 'hi': hi}
+            self.state = {'drag': None, 'lo': lo, 'hi': hi, 'blit_bg': None}
             y_trans = cax.get_yaxis_transform()
-            # Draw lines with circular markers extending to the left (x=0) 
-            self.lo_line, = cax.plot([-0.2, 1], [lo, lo], color='#007bff', lw=2, marker='o', markersize=15, markevery=[0], clip_on=False, transform=y_trans)
-            self.hi_line, = cax.plot([-0.2, 1], [hi, hi], color='#007bff', lw=2, marker='o', markersize=15, markevery=[0], clip_on=False, transform=y_trans)
+            # Draw lines with circular markers extending to the left (x=0).
+            # animated=True excludes them from regular draw() calls so they
+            # can be composited independently via draw_artist() + blit().
+            self.lo_line, = cax.plot([-0.2, 1], [lo, lo], color='#007bff', lw=2, marker='o', markersize=15, markevery=[0], clip_on=False, transform=y_trans, animated=True)
+            self.hi_line, = cax.plot([-0.2, 1], [hi, hi], color='#007bff', lw=2, marker='o', markersize=15, markevery=[0], clip_on=False, transform=y_trans, animated=True)
             self.vmin_cb = 1 if logRange else 0
 
             def on_press(event):
                 if event.y is None or event.x is None: return
-                
+
                 # Check horizontal coordinate in cax axes space
                 x_axes, _ = cax.transAxes.inverted().transform((event.x, event.y))
                 if x_axes < -2.0 or x_axes > 2.0: return
-                
+
                 # Get vertical coordinate in cax data space
                 _, y_data = cax.transData.inverted().transform((event.x, event.y))
-                
+
                 self.state['drag'] = 'lo' if abs(y_data - self.state['lo']) <= abs(y_data - self.state['hi']) else 'hi'
 
             def on_motion(event):
                 if not self.state['drag'] or event.y is None: return
-                
+                bg = self.state['blit_bg']
+                if bg is None: return
+
                 _, y_data = cax.transData.inverted().transform((event.x, event.y))
                 y = float(np.clip(y_data, self.vmin_cb, 65535))
-                
+
                 if self.state['drag'] == 'lo':
                     self.state['lo'] = min(y, self.state['hi'] * 0.999 if logRange else self.state['hi'] - 1)
                     self.lo_line.set_ydata([self.state['lo']] * 2)
@@ -188,19 +192,27 @@ class RasterFigure(Figure):
                     self.state['hi'] = max(y, self.state['lo'] * 1.001 if logRange else self.state['lo'] + 1)
                     self.hi_line.set_ydata([self.state['hi']] * 2)
 
+                # Restore the static background then composite only the two
+                # handle lines – no colormap rebuild, no full figure redraw.
+                self.canvas.restore_region(bg)
+                cax.draw_artist(self.lo_line)
+                cax.draw_artist(self.hi_line)
+                self.canvas.blit(self.bbox)
+
+            def on_release(event):
+                if not self.state['drag']:
+                    return
+                self.state['drag'] = None
+                # Apply the colormap change once, when the drag ends.
+                self.im.set_cmap(make_cmap(self.state['lo'], self.state['hi']))
+                if self.showValues:
+                    self._update_value_texts(np.asarray(self.im.get_array(), dtype=float))
                 if self._on_manual_range_change:
                     try:
                         self._on_manual_range_change(self.state['lo'], self.state['hi'])
                     except Exception:
                         pass
-
-                self.im.set_cmap(make_cmap(self.state['lo'], self.state['hi']))
-                if self.showValues:
-                    self._update_value_texts(np.asarray(self.im.get_array(), dtype=float))
                 self.canvas.draw_idle()
-
-            def on_release(event): 
-                self.state['drag'] = None
 
             self._on_press = on_press
             self._on_motion = on_motion
@@ -211,10 +223,22 @@ class RasterFigure(Figure):
                 if fig.canvas:
                     if not hasattr(fig.canvas, 'figure'):
                         fig.canvas.figure = fig
+
+                    def on_draw(event):
+                        # After every full draw, animated artists are absent
+                        # from the canvas. Save the clean background, then
+                        # composite the handles on top via blit so they remain
+                        # visible without being part of the normal draw cycle.
+                        fig.state['blit_bg'] = fig.canvas.copy_from_bbox(fig.bbox)
+                        cax.draw_artist(fig.lo_line)
+                        cax.draw_artist(fig.hi_line)
+                        fig.canvas.blit(fig.bbox)
+
+                    fig.canvas.mpl_connect('draw_event', on_draw)
                     fig.canvas.mpl_connect('button_press_event', fig._on_press)
                     fig.canvas.mpl_connect('motion_notify_event', fig._on_motion)
                     fig.canvas.mpl_connect('button_release_event', fig._on_release)
-            
+
             # Store connect function temporarily.
             self._connect_events = connect_events
 
