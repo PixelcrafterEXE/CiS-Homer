@@ -141,7 +141,7 @@ class UI(tkk.Tk):
 
         self._options_toggle_btn = tkk.Button(
             self._raster_body,
-            text="⮞ Show options",
+            text="⮝ Show options ⮝",
             command=self._toggle_options_panel,
             bootstyle="secondary"
         )
@@ -152,17 +152,19 @@ class UI(tkk.Tk):
         self._build_options_panel(self._options_panel)
         self._apply_options_panel_visibility()
 
-        # Settings tab
-        self._frame_settings = tkk.Frame(self._tabview)
-        self._tabview.add(self._frame_settings, text="Settings")
-
-        self._setup_settings_tab()
+        
 
         # Calibration tab
         self._frame_calibration = tkk.Frame(self._tabview)
         self._tabview.add(self._frame_calibration, text="Calibration")
 
         self._setup_calibration_tab()
+
+        # Settings tab
+        self._frame_settings = tkk.Frame(self._tabview)
+        self._tabview.add(self._frame_settings, text="Settings")
+
+        self._setup_settings_tab()
 
         if sensor_active:
             self._rebuild_raster_fig()
@@ -289,6 +291,11 @@ class UI(tkk.Tk):
             visibility=lambda: not is_usb_available()
         ), col_exp)
 
+        self._add_option(OptionSlider(
+            col_exp, "Testslider", min_val=0, max_val=100000, initial=50, accuracy=3, persistent=True, show_minmax=True,
+            visibility=lambda: True
+        ), col_exp)
+
     def _add_option(self, option: Option, container: tkk.Frame) -> None:
         self._options.append(option)
         option.add_to(container)
@@ -300,10 +307,10 @@ class UI(tkk.Tk):
     def _apply_options_panel_visibility(self) -> None:
         if self._options_panel_visible:
             self._options_panel.grid(row=2, column=0, sticky="nsew")
-            self._options_toggle_btn.configure(text="⮜ Hide options")
+            self._options_toggle_btn.configure(text="⮟ Hide options ⮟")
         else:
             self._options_panel.grid_forget()
-            self._options_toggle_btn.configure(text="⮞ Show options")
+            self._options_toggle_btn.configure(text="⮝ Show options ⮝")
 
     def _rebuild_raster_fig(self) -> None:
         # ... (Rest of the method remains identical to your provided code) ...

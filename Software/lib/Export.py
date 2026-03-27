@@ -51,6 +51,7 @@ def is_usb_available() -> bool:
     return _usb_available
 
 def export_data(sensor: Sensor) -> None:
+    #todo: export calibrated, mW/mm² as seperate columns. Add second table with timestamp, sensor settings, temperatures, ref-diode, hwid...
     if not _target_part:
         return
         

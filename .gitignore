@@ -1,4 +1,5 @@
 Software/venv/
 Software/homerpi.egg-info/
 Software/lib/__pycache__/
+Software/lib/UI/__pycache__/
 Software/res/config.json
