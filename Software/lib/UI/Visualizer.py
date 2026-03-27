@@ -4,7 +4,7 @@ import numpy as np
 import ttkbootstrap as tkk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from lib.Config import setCFGKey
+from lib.Config import getColorSchemes, setCFGKey
 from lib.Plotting import RasterFigure
 from lib.UI.Options import Option, OptionButton, OptionDropdown, OptionEntry, OptionLabel, OptionSlider, OptionToggle
 
@@ -27,7 +27,7 @@ class VisualizerMixin:
 
         self._options_toggle_btn = tkk.Button(
             self._raster_body,
-            text="⮞ Show options",
+            text="⮝ Show options ⮝",
             command=self._toggle_options_panel,
             bootstyle="secondary",
         )
@@ -136,10 +136,10 @@ class VisualizerMixin:
     def _apply_options_panel_visibility(self) -> None:
         if self._options_panel_visible:
             self._options_panel.grid(row=2, column=0, sticky="nsew")
-            self._options_toggle_btn.configure(text="⮜ Hide options")
+            self._options_toggle_btn.configure(text="⮟ Hide options ⮟")
         else:
             self._options_panel.grid_forget()
-            self._options_toggle_btn.configure(text="⮞ Show options")
+            self._options_toggle_btn.configure(text="⮝ Show options ⮝")
 
     def _store_manual_range(self, lo: float, hi: float) -> None:
         setCFGKey("manual_range_lo", float(lo))
@@ -155,7 +155,31 @@ class VisualizerMixin:
         log_range = self._log_scale_toggle.value.get() if hasattr(self, '_log_scale_toggle') else True
         show_values = self._label_measurements_toggle.value.get() if hasattr(self, '_label_measurements_toggle') else False
 
-        self._raster_fig = RasterFigure(np.full((9, 9), np.nan), rangeMode=range_mode, logRange=log_range, showValues=show_values)
+        # Settings-panel values
+        wafer_mm = float(self._wafer_diameter_dropdown.value.get()) if hasattr(self, '_wafer_diameter_dropdown') else 150.0
+        mask_wafer = self._mask_wafer_toggle.value.get() if hasattr(self, '_mask_wafer_toggle') else False
+        show_hint = self._settings_show_orientation_hint.value.get() if hasattr(self, '_settings_show_orientation_hint') else True
+        use_clip = self._settings_use_clipping_colors.value.get() if hasattr(self, '_settings_use_clipping_colors') else True
+
+        color_schemes = getattr(self, '_color_schemes', {})
+        scheme_name = self._color_scheme_dropdown.value.get() if hasattr(self, '_color_scheme_dropdown') else ""
+        scheme = color_schemes.get(scheme_name, {})
+        color_list = scheme.get("colors") or ['black', 'white']
+        under_color = scheme.get("under", 'black') if use_clip else color_list[0]
+        over_color = scheme.get("over", 'white') if use_clip else color_list[-1]
+
+        self._raster_fig = RasterFigure(
+            np.full((9, 9), np.nan),
+            rangeMode=range_mode,
+            logRange=log_range,
+            showValues=show_values,
+            waferDiameterMm=wafer_mm,
+            MaskWafer=mask_wafer,
+            colorScheme=color_list,
+            underColor=under_color,
+            overColor=over_color,
+            showOrientationHint=show_hint,
+        )
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._plot_container)
         self._raster_canvas.draw()
         self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
