@@ -223,72 +223,20 @@ class Sensor:
         return self._read_64_channels(b"r")
 
     def getCalibrated(self) -> np.ndarray:
-        '''ADC Rohwerte abzüglich Kalibrierwerte (m)'''
-        return self._read_64_channels(b"m")
-
-    def getOffset(self) -> np.ndarray:
-        '''ADC Rohwerte abzüglich Offsetwerte (o)'''
-        return self._read_64_channels(b"o")
-
-    def measureOffset(self) -> None:
-        '''Offsetwerte für 64 Kanäle messen und in EEProm speichern (d)'''
-        if self.ser is None or not self.ser.is_open:
-            raise RuntimeError("Serial connection is not open.")
-        self.ser.write(b"d")
-        self.ser.flush()
-
-    def writeCalibration(self, data: np.ndarray) -> None:
-        '''Kalibrierwerte in EEprom speichern (a), erwartet 64x uint16.'''
-        if self.ser is None or not self.ser.is_open:
-            raise RuntimeError("Serial connection is not open.")
-
-        array = np.asarray(data)
-        if array.shape != (64,):
-            raise ValueError(f"Calibration data must have shape (64,), got {array.shape}")
-
-        # Ensure 2-byte unsigned integer values and convert to 128-byte payload.
-        if np.any(array < 0) or np.any(array > 65535):
-            raise ValueError("Calibration values must be in range 0..65535")
-        payload = array.astype("<u2", copy=False).tobytes()
-        if len(payload) != 128:
-            raise ValueError("Calibration payload must be exactly 128 bytes (64 x 2 bytes)")
-
-        # Stop potential stream and clear stale data before binary command.
-        self.ser.write(b"x")
-        self.ser.flush()
-        time.sleep(0.05)
-        self.ser.reset_input_buffer()
-
-        self.ser.write(b"a")
-        self.ser.write(payload)
-        self.ser.flush()
+        '''ADC Rohwerte mit Kalibrierwerten aus eeprom verrechnet'''
+        raise NotImplementedError("getCalibrated is not implemented yet. Calibration handling needs to be defined first.")
 
     def readCalibration(self) -> np.ndarray:
-        '''Kalibrierwerte auslesen (k), gibt 64x uint16 zurück.'''
-        if self.ser is None or not self.ser.is_open:
-            raise RuntimeError("Serial connection is not open.")
+        '''Liest Kalibrierwerte (2 Werte x 2 byte x 64 Kanäle) aus.
+        Die Refferenzhelligkeiten der 2 gespeicherten Messungen werden ebenfalls aus dem eeprom gelesen.
+        Diese Funktion linearisiert anschließend die äquivalenten Helligkeiten für jeden Kanal 
+        und gibt sie als array aus 64*[f(0), f(65536)] zurück, wobei f die lineare Funktion ist, 
+        die durch die beiden Kalibrierpunkte definiert wird.'''
+        raise NotImplementedError("readCalibration is not implemented yet. Calibration handling needs to be defined first.")
+    
+    def writeCalibration(self, calibration_data: np.ndarray) -> None:
+        raise NotImplementedError("writeCalibration is not implemented yet. Calibration handling needs to be defined first.")
 
-        # Stop potential stream and clear stale data before binary command.
-        self.ser.write(b"x")
-        self.ser.flush()
-        time.sleep(0.05)
-        self.ser.reset_input_buffer()
-
-        self.ser.write(b"k")
-        self.ser.flush()
-
-        # Expect 128 bytes (2x 64 bytes).
-        deadline = time.monotonic() + 5.0
-        data = bytearray()
-        while len(data) < 128 and time.monotonic() < deadline:
-            chunk = self.ser.read(128 - len(data))
-            if chunk:
-                data.extend(chunk)
-
-        if len(data) != 128:
-            raise RuntimeError(f"Failed to read calibration data, received {len(data)}/128 bytes")
-
-        return np.frombuffer(bytes(data), dtype="<u2", count=64).astype(np.uint16, copy=True)
 
     def getMap(self, calibrated: bool = False, return_unmapped: bool = False, data_source: Optional[str] = None):
         '''returns the latest sensor frame mapped to a 9x9 grid.
