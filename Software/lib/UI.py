@@ -289,6 +289,11 @@ class UI(tkk.Tk):
             visibility=lambda: not is_usb_available()
         ), col_exp)
 
+        self._add_option(OptionSlider(
+            col_exp, "Testslider", min_val=0, max_val=100000, initial=50, accuracy=3, persistent=True, show_minmax=True,
+            visibility=lambda: True
+        ), col_exp)
+
     def _add_option(self, option: Option, container: tkk.Frame) -> None:
         self._options.append(option)
         option.add_to(container)

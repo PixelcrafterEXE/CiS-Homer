@@ -1,9 +1,9 @@
 from __future__ import annotations
+import math
 import tkinter as tk
 from typing import Callable, Sequence
 
 import ttkbootstrap as tkk
-
 from lib.Config import getCFGKey, setCFGKey
 
 
@@ -108,34 +108,115 @@ class OptionDropdown(Option):
                 command(self.value.get())
 
         dropdown.bind("<<ComboboxSelected>>", _on_select)
-    
-    def _on_resize(self, event) -> None:
-        """Handle canvas resize"""
-        self._draw_slider()
-    
-    def _on_click(self, event) -> None:
-        """Handle mouse click on slider"""
-        self.dragging = True
-        new_val = self._value_from_x(event.x)
-        self.value.set(new_val)
-        self._draw_slider()
+
+
+class OptionSlider(Option):
+    """Slider with ±step button pairs. accuracy sets the number of button pairs.
+    Steps are descending powers of ten starting from the largest < (max-min)."""
+
+    _PAD = 13  # approx half the ttk Scale sliderlength (handle travel margin)
+
+    def __init__(
+        self,
+        parent,
+        label: str,
+        min_val: int = 0,
+        max_val: int = 100,
+        initial: int | None = None,
+        accuracy: int = 1,
+        show_minmax: bool = False,
+        command: Callable[[int], None] | None = None,
+        visibility: Callable[[], bool] | None = None,
+        persistent: bool = False,
+    ) -> None:
+        super().__init__(parent, label, visibility=visibility)
+        self.configure(padding=(6, 2))
+        self.persistent = persistent
+        self.config_key = f"slider_{label.replace(' ', '_')}"
+        self._min, self._max = int(min_val), int(max_val)
+        self._command = command
+
+        span = self._max - self._min
+        exp = max(0, math.floor(math.log10(span)) if span > 0 else 0)
+        while 10 ** exp >= span and exp > 0:
+            exp -= 1
+        self._steps = [max(1, 10 ** (exp - i)) for i in range(max(1, int(accuracy)))]
+
+        if initial is None:
+            initial = self._min
+        if self.persistent:
+            initial = int(getCFGKey(self.config_key, initial))
+        self.value = tk.IntVar(value=max(self._min, min(self._max, initial)))
+
+        self.columnconfigure(1, weight=1)
+
+        # Row 0: name label
+        tkk.Label(self, text=label).grid(row=0, column=0, columnspan=3, sticky="w")
+
+        # Row 1: value canvas spanning scale column (text tracks the slider dot)
+        self._val_canvas = tk.Canvas(self, height=14, highlightthickness=0, bd=0)
+        self._val_canvas.grid(row=1, column=1, sticky="ew")
+
+        # Row 2: [dec buttons | scale | inc buttons]
+        _DEC = ["\u2212", "\u2212\u2212", "\u2212\u2212\u2212", "\u2212\u2212\u2212\u2212", "\u2212\u2212\u2212\u2212\u2212"]
+        _INC = ["+", "++", "+++", "++++", "+++++"]
+
+        dec = tkk.Frame(self)
+        dec.grid(row=2, column=0, sticky="e")
+        for i, s in enumerate(reversed(self._steps)):
+            tk.Button(dec, text=_DEC[min(i, 4)], command=lambda s=s: self._step(-s),
+                      padx=2, pady=0, font=("TkFixedFont", 8),
+                      relief="solid", bd=1).pack(side="right", padx=(1, 0))
+
+        self._scale = tkk.Scale(self, from_=self._min, to=self._max, orient="horizontal",
+                                variable=self.value, command=lambda _: self._on_change())
+        self._scale.grid(row=2, column=1, sticky="ew", padx=0)
+
+        inc = tkk.Frame(self)
+        inc.grid(row=2, column=2, sticky="w")
+        for i, s in enumerate(reversed(self._steps)):
+            tk.Button(inc, text=_INC[min(i, 4)], command=lambda s=s: self._step(s),
+                      padx=2, pady=0, font=("TkFixedFont", 8),
+                      relief="solid", bd=1).pack(side="left", padx=(0, 1))
+
+        if show_minmax:
+            tkk.Label(self, text=str(self._min), font=("TkDefaultFont", 8)).grid(row=3, column=1, sticky="w")
+            tkk.Label(self, text=str(self._max), font=("TkDefaultFont", 8)).grid(row=3, column=1, sticky="e")
+
+        self._val_canvas.bind("<Configure>", lambda _: self._draw_val())
+        self._val_canvas.after(50, self._draw_val)
+
+    def _clamp(self, v: int) -> int:
+        return max(self._min, min(self._max, v))
+
+    def _slider_x(self) -> float:
+        w = self._val_canvas.winfo_width()
+        span = self._max - self._min
+        ratio = (self.value.get() - self._min) / span if span else 0.5
+        return self._PAD + ratio * max(0, w - 2 * self._PAD)
+
+    def _draw_val(self) -> None:
+        c = self._val_canvas
+        c.delete("all")
+        c.create_text(self._slider_x(), 7, text=str(round(self.value.get())),
+                      font=("TkDefaultFont", 8), anchor="center")
+
+    def _on_change(self) -> None:
+        self._draw_val()
         self._fire_command()
-    
-    def _on_drag(self, event) -> None:
-        """Handle mouse drag"""
-        if self.dragging:
-            new_val = self._value_from_x(event.x)
-            self.value.set(new_val)
-            self._draw_slider()
-            # Don't fire command on every drag event to avoid spam
-    
-    def _on_release(self, event) -> None:
-        """Handle mouse release"""
-        if self.dragging:
-            self.dragging = False
-            self._fire_command()
-            if self.persistent:
-                setCFGKey(self.config_key, self.value.get())
+
+    def _step(self, delta: int) -> None:
+        self.value.set(self._clamp(self.value.get() + delta))
+        self._draw_val()
+        self._fire_command()
+
+    def _fire_command(self) -> None:
+        self.value.set(round(self.value.get()))
+        if self.persistent:
+            setCFGKey(self.config_key, self.value.get())
+        if self._command:
+            self._command(self.value.get())
+
 
 class OptionSection(Option):
     def __init__(
