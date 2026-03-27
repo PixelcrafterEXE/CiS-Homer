@@ -4,7 +4,7 @@ import numpy as np
 import ttkbootstrap as tkk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from lib.Config import getColorSchemes, setCFGKey
+from lib.Config import getCFGKey, getColorSchemes, setCFGKey
 from lib.Plotting import RasterFigure
 from lib.UI.Options import Option, OptionButton, OptionDropdown, OptionEntry, OptionLabel, OptionSlider, OptionToggle
 
@@ -177,6 +177,9 @@ class VisualizerMixin:
             underColor=under_color,
             overColor=over_color,
             showOrientationHint=show_hint,
+            manualLo=getCFGKey("manual_range_lo"),
+            manualHi=getCFGKey("manual_range_hi"),
+            onManualRangeChange=self._store_manual_range,
         )
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._plot_container)
         self._raster_canvas.draw()
