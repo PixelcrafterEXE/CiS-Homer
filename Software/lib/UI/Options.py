@@ -95,7 +95,7 @@ class OptionDropdown(Option):
         selected = initial if initial is not None else (values[0] if values else "")
         if self.persistent:
             selected = getCFGKey(self.config_key, selected)
-            
+
         self.value = tk.StringVar(value=selected)
 
         dropdown = tkk.Combobox(self, textvariable=self.value, values=list(values), state="readonly")
@@ -232,15 +232,15 @@ class OptionSection(Option):
         self.configure(padding=0)
         self._children: list[Option] = []
         self._is_expanded = getCFGKey(self.config_key, True) if self.persistent else True
-        
+
         self._header_btn = tkk.Button(
-            self, 
-            text="", 
-            command=self._toggle, 
+            self,
+            text="",
+            command=self._toggle,
             bootstyle="link",
         )
         self._header_btn.grid(row=0, column=0, sticky="w")
-        
+
         self.content_frame = tkk.Frame(self)
         self.content_frame.grid(row=1, column=0, sticky="nsew", pady=(5, 0), padx=(10, 0))
         self.content_frame.columnconfigure(0, weight=1)
@@ -266,17 +266,17 @@ class OptionSection(Option):
 
     def check_visibility_change(self) -> bool:
         changed = super().check_visibility_change()
-        
+
         children_changed = False
         for child in self._children:
             if child.check_visibility_change():
                 children_changed = True
-                
+
         if children_changed:
             for child in self._children:
                 child.pack_forget()
             for child in self._children:
                 if child._is_visible:
                     child.pack(in_=child._parent_container, fill="x", padx=8, pady=5)
-        
+
         return changed
