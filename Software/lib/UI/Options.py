@@ -43,6 +43,59 @@ class OptionLabel(Option):
         label = tkk.Label(self, text=text, foreground=foreground)
         label.grid(row=0, column=0, sticky="w")
 
+class OptionEntry(Option):
+    """Labelled text-entry field.
+
+    Set ``numeric=True`` to tag the entry as numeric; the on-screen
+    keyboard mixin will then switch to the numpad layout when it gains
+    focus (see ``lib.UI.Keyboard``).
+    """
+
+    def __init__(
+        self,
+        parent,
+        label: str,
+        initial: str = "",
+        numeric: bool = False,
+        placeholder: str = "",
+        command: Callable[[str], None] | None = None,
+        visibility: Callable[[], bool] | None = None,
+    ) -> None:
+        super().__init__(parent, label, visibility=visibility)
+        self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=2)
+
+        tkk.Label(self, text=label).grid(row=0, column=0, sticky="w", padx=(0, 10))
+
+        self.value = tk.StringVar(value=initial)
+        self._entry = tkk.Entry(self, textvariable=self.value)
+        self._entry.grid(row=0, column=1, sticky="ew")
+
+        # Tag entry so KeyboardMixin can switch to numpad layout.
+        if numeric:
+            self._entry._numeric_keyboard = True
+
+        if placeholder and not initial:
+            self._entry.insert(0, placeholder)
+            self._entry.configure(foreground="grey")
+
+            def _on_focus_in(e):
+                if self._entry.get() == placeholder:
+                    self._entry.delete(0, "end")
+                    self._entry.configure(foreground="")
+
+            def _on_focus_out(e):
+                if not self._entry.get():
+                    self._entry.insert(0, placeholder)
+                    self._entry.configure(foreground="grey")
+
+            self._entry.bind("<FocusIn>", _on_focus_in)
+            self._entry.bind("<FocusOut>", _on_focus_out)
+
+        if command:
+            self._entry.bind("<Return>", lambda _: command(self.value.get()))
+            self._entry.bind("<FocusOut>", lambda _: command(self.value.get()))
+
 class OptionToggle(Option):
     def __init__(
         self,

@@ -6,7 +6,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from lib.Config import setCFGKey
 from lib.Plotting import RasterFigure
-from lib.UI.Options import Option, OptionButton, OptionDropdown, OptionLabel, OptionSlider, OptionToggle
+from lib.UI.Options import Option, OptionButton, OptionDropdown, OptionEntry, OptionLabel, OptionSlider, OptionToggle
 
 
 class VisualizerMixin:
@@ -73,7 +73,7 @@ class VisualizerMixin:
         ), col_meas)
 
         self._data_source_dropdown = OptionDropdown(
-            col_meas, "Data source", ["raw", "calibrated", "offset"], "raw",
+            col_meas, "Data source", ["raw", "calibrated", "mW/mm²"], "raw",
             command=lambda _v: self._update_measurement(), persistent=True,
         )
         self._add_option(self._data_source_dropdown, col_meas)
@@ -94,10 +94,11 @@ class VisualizerMixin:
         )
         self._add_option(self._log_scale_toggle, col_disp)
 
-        self._add_option(OptionToggle(
+        self._label_measurements_toggle = OptionToggle(
             col_disp, "Label Measurements", initial=False,
             command=lambda _: self._rebuild_raster_fig(), persistent=True,
-        ), col_disp)
+        )
+        self._add_option(self._label_measurements_toggle, col_disp)
 
         # --- COLUMN 3: EXPORT ---
         col_exp = tkk.LabelFrame(cols_container, text=" Export ")
@@ -113,6 +114,15 @@ class VisualizerMixin:
         self._add_option(OptionLabel(
             col_exp, text="No USB storage detected", foreground="red",
             visibility=lambda: not is_usb_available(),
+        ), col_exp)
+
+        # ── Keyboard test fields ──────────────────────────────────────────────
+        self._add_option(OptionEntry(
+            col_exp, "Text", placeholder="type here…",
+        ), col_exp)
+
+        self._add_option(OptionEntry(
+            col_exp, "Number", placeholder="0", numeric=True,
         ), col_exp)
 
     def _add_option(self, option: Option, container: tkk.Frame) -> None:
@@ -143,8 +153,9 @@ class VisualizerMixin:
 
         range_mode = self._range_mode_dropdown.value.get() if hasattr(self, '_range_mode_dropdown') else "manual"
         log_range = self._log_scale_toggle.value.get() if hasattr(self, '_log_scale_toggle') else True
+        show_values = self._label_measurements_toggle.value.get() if hasattr(self, '_label_measurements_toggle') else False
 
-        self._raster_fig = RasterFigure(np.full((9, 9), np.nan), rangeMode=range_mode, logRange=log_range)
+        self._raster_fig = RasterFigure(np.full((9, 9), np.nan), rangeMode=range_mode, logRange=log_range, showValues=show_values)
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._plot_container)
         self._raster_canvas.draw()
         self._raster_canvas.get_tk_widget().pack(fill="both", expand=True)
