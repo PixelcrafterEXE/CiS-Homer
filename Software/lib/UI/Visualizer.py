@@ -37,11 +37,9 @@ class VisualizerMixin:
         self._build_options_panel(self._options_panel)
         self._apply_options_panel_visibility()
 
-        if sensor_active:
-            self._rebuild_raster_fig()
-        else:
-            self._raster_canvas = None
-            tkk.Label(self._plot_container, text="No sensor detected", foreground="red").pack(expand=True)
+        # _rebuild_raster_fig is called by _build_main_panel after all tabs
+        # (including Settings) are built, so color scheme etc. are available.
+        self._raster_canvas = None
 
     def _build_options_panel(self, parent) -> None:
         self._options = []
