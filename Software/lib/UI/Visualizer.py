@@ -4,7 +4,7 @@ import numpy as np
 import ttkbootstrap as tkk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from lib.Config import getColorSchemes, setCFGKey
+from lib.Config import getCFGKey, getColorSchemes, setCFGKey
 from lib.Plotting import RasterFigure
 from lib.UI.Options import Option, OptionButton, OptionDropdown, OptionEntry, OptionLabel, OptionSlider, OptionToggle
 
@@ -27,7 +27,7 @@ class VisualizerMixin:
 
         self._options_toggle_btn = tkk.Button(
             self._raster_body,
-            text="⮝ Show options ⮝",
+            text="▲ Show options ▲",
             command=self._toggle_options_panel,
             bootstyle="secondary",
         )
@@ -37,11 +37,9 @@ class VisualizerMixin:
         self._build_options_panel(self._options_panel)
         self._apply_options_panel_visibility()
 
-        if sensor_active:
-            self._rebuild_raster_fig()
-        else:
-            self._raster_canvas = None
-            tkk.Label(self._plot_container, text="No sensor detected", foreground="red").pack(expand=True)
+        # _rebuild_raster_fig is called by _build_main_panel after all tabs
+        # (including Settings) are built, so color scheme etc. are available.
+        self._raster_canvas = None
 
     def _build_options_panel(self, parent) -> None:
         self._options = []
@@ -136,10 +134,10 @@ class VisualizerMixin:
     def _apply_options_panel_visibility(self) -> None:
         if self._options_panel_visible:
             self._options_panel.grid(row=2, column=0, sticky="nsew")
-            self._options_toggle_btn.configure(text="⮟ Hide options ⮟")
+            self._options_toggle_btn.configure(text="▼ Hide options ▼")
         else:
             self._options_panel.grid_forget()
-            self._options_toggle_btn.configure(text="⮝ Show options ⮝")
+            self._options_toggle_btn.configure(text="▲ Show options ▲")
 
     def _store_manual_range(self, lo: float, hi: float) -> None:
         setCFGKey("manual_range_lo", float(lo))
@@ -179,6 +177,9 @@ class VisualizerMixin:
             underColor=under_color,
             overColor=over_color,
             showOrientationHint=show_hint,
+            manualLo=getCFGKey("manual_range_lo"),
+            manualHi=getCFGKey("manual_range_hi"),
+            onManualRangeChange=self._store_manual_range,
         )
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._plot_container)
         self._raster_canvas.draw()

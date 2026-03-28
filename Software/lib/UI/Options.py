@@ -46,9 +46,7 @@ class OptionLabel(Option):
 class OptionEntry(Option):
     """Labelled text-entry field.
 
-    Set ``numeric=True`` to tag the entry as numeric; the on-screen
-    keyboard mixin will then switch to the numpad layout when it gains
-    focus (see ``lib.UI.Keyboard``).
+    Set ``numeric=True`` to restrict input to numbers.
     """
 
     def __init__(
@@ -70,10 +68,6 @@ class OptionEntry(Option):
         self.value = tk.StringVar(value=initial)
         self._entry = tkk.Entry(self, textvariable=self.value)
         self._entry.grid(row=0, column=1, sticky="ew")
-
-        # Tag entry so KeyboardMixin can switch to numpad layout.
-        if numeric:
-            self._entry._numeric_keyboard = True
 
         if placeholder and not initial:
             self._entry.insert(0, placeholder)
