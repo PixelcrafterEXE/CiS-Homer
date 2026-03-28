@@ -6,13 +6,12 @@ import ttkbootstrap as tkk
 
 from lib.Sensor import Sensor
 from lib.UI.Calibration import CalibrationMixin
-from lib.UI.Keyboard import KeyboardMixin
 from lib.UI.Options import Option
 from lib.UI.Settings import SettingsMixin
 from lib.UI.Visualizer import VisualizerMixin
 
 
-class UI(tkk.Tk, VisualizerMixin, CalibrationMixin, SettingsMixin, KeyboardMixin):
+class UI(tkk.Tk, VisualizerMixin, CalibrationMixin, SettingsMixin):
     def __init__(self) -> None:
         super().__init__()
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -27,7 +26,6 @@ class UI(tkk.Tk, VisualizerMixin, CalibrationMixin, SettingsMixin, KeyboardMixin
 
         self._options: list[Option] = []
         self.buildUI()
-        self._setup_keyboard()
         self._update_loop()
         self._measurement_loop()
 
