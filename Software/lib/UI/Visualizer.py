@@ -27,7 +27,7 @@ class VisualizerMixin:
 
         self._options_toggle_btn = tkk.Button(
             self._raster_body,
-            text="⮝ Show options ⮝",
+            text="▲ Show options ▲",
             command=self._toggle_options_panel,
             bootstyle="secondary",
         )
@@ -134,10 +134,10 @@ class VisualizerMixin:
     def _apply_options_panel_visibility(self) -> None:
         if self._options_panel_visible:
             self._options_panel.grid(row=2, column=0, sticky="nsew")
-            self._options_toggle_btn.configure(text="⮟ Hide options ⮟")
+            self._options_toggle_btn.configure(text="▼ Hide options ▼")
         else:
             self._options_panel.grid_forget()
-            self._options_toggle_btn.configure(text="⮝ Show options ⮝")
+            self._options_toggle_btn.configure(text="▲ Show options ▲")
 
     def _store_manual_range(self, lo: float, hi: float) -> None:
         setCFGKey("manual_range_lo", float(lo))

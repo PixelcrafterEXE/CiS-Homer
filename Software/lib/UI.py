@@ -141,7 +141,7 @@ class UI(tkk.Tk):
 
         self._options_toggle_btn = tkk.Button(
             self._raster_body,
-            text="⮝ Show options ⮝",
+            text="▲ Show options ▲",
             command=self._toggle_options_panel,
             bootstyle="secondary"
         )
@@ -307,10 +307,10 @@ class UI(tkk.Tk):
     def _apply_options_panel_visibility(self) -> None:
         if self._options_panel_visible:
             self._options_panel.grid(row=2, column=0, sticky="nsew")
-            self._options_toggle_btn.configure(text="⮟ Hide options ⮟")
+            self._options_toggle_btn.configure(text="▼ Hide options ▼")
         else:
             self._options_panel.grid_forget()
-            self._options_toggle_btn.configure(text="⮝ Show options ⮝")
+            self._options_toggle_btn.configure(text="▲ Show options ▲")
 
     def _rebuild_raster_fig(self) -> None:
         # ... (Rest of the method remains identical to your provided code) ...
