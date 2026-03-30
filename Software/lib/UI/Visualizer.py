@@ -10,7 +10,10 @@ from lib.UI.Options import Option, OptionButton, OptionDropdown, OptionEntry, Op
 
 
 class VisualizerMixin:
-    def _build_visualizer_tab(self, sensor_active: bool) -> None:
+    def _build_visualizer_tab(self, sensor_active_fn) -> None:
+        """Build the visualizer tab. sensor_active_fn is a callable that returns True if sensor is connected."""
+        sensor_active = sensor_active_fn() if callable(sensor_active_fn) else sensor_active_fn
+        
         self._frame_raster_container = tkk.Frame(self._tabview)
         self._tabview.add(self._frame_raster_container, text="Visualizer")
 
@@ -34,14 +37,18 @@ class VisualizerMixin:
         self._options_toggle_btn.grid(row=1, column=0, sticky="ew", pady=(8, 0))
 
         self._options_panel = tkk.Frame(self._raster_body, padding=10, relief="ridge", borderwidth=1)
-        self._build_options_panel(self._options_panel)
+        self._build_options_panel(self._options_panel, sensor_active_fn)
         self._apply_options_panel_visibility()
 
         # _rebuild_raster_fig is called by _build_main_panel after all tabs
         # (including Settings) are built, so color scheme etc. are available.
         self._raster_canvas = None
+        
+        # Show "No sensor detected" message if no sensor
+        if not sensor_active:
+            tkk.Label(self._plot_container, text="No sensor detected", foreground="red").pack(expand=True)
 
-    def _build_options_panel(self, parent) -> None:
+    def _build_options_panel(self, parent, sensor_active_fn) -> None:
         self._options = []
 
         cols_container = tkk.Frame(parent)
@@ -114,15 +121,6 @@ class VisualizerMixin:
             visibility=lambda: not is_usb_available(),
         ), col_exp)
 
-        # ── Keyboard test fields ──────────────────────────────────────────────
-        self._add_option(OptionEntry(
-            col_exp, "Text", placeholder="type here…",
-        ), col_exp)
-
-        self._add_option(OptionEntry(
-            col_exp, "Number", placeholder="0", numeric=True,
-        ), col_exp)
-
     def _add_option(self, option: Option, container: tkk.Frame) -> None:
         self._options.append(option)
         option.add_to(container)
@@ -154,7 +152,7 @@ class VisualizerMixin:
         show_values = self._label_measurements_toggle.value.get() if hasattr(self, '_label_measurements_toggle') else False
 
         # Settings-panel values
-        wafer_mm = float(self._wafer_diameter_dropdown.value.get()) if hasattr(self, '_wafer_diameter_dropdown') else 150.0
+        wafer_mm = float(self._wafer_diameter_slider.value.get()) if hasattr(self, '_wafer_diameter_slider') else 150.0
         mask_wafer = self._mask_wafer_toggle.value.get() if hasattr(self, '_mask_wafer_toggle') else False
         show_hint = self._settings_show_orientation_hint.value.get() if hasattr(self, '_settings_show_orientation_hint') else True
         use_clip = self._settings_use_clipping_colors.value.get() if hasattr(self, '_settings_use_clipping_colors') else True

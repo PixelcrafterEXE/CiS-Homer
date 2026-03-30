@@ -122,15 +122,13 @@ class UI(tkk.Tk, VisualizerMixin, CalibrationMixin, SettingsMixin, KeyboardMixin
         self._tabview = tkk.Notebook(self._main_panel)
         self._tabview.pack(fill="both", expand=True)
 
-        self._build_visualizer_tab(sensor_active)
-        self._build_calibration_tab()
+        self._build_visualizer_tab(self._sensor_active)
+        self._build_calibration_tab(self._sensor_active)
         self._build_settings_tab()
 
         # Now that Settings tab has been built (and its dropdowns/toggles
         # exist), build the raster figure with the correct color scheme etc.
         if sensor_active:
             self._rebuild_raster_fig()
-        else:
-            tkk.Label(self._plot_container, text="No sensor detected", foreground="red").pack(expand=True)
 
         self._ui_sensor_state = sensor_active
