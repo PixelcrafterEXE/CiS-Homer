@@ -105,6 +105,7 @@ class _ProgressRaster(tk.Canvas):
     """
     Square-cell 9x9 canvas for wizard calibration progress.
     Captured cells are shown filled with the raw ADC value; uncaptured cells are dim.
+    The currently active diode is highlighted in yellow.
     """
     GRID = 9
 
@@ -112,10 +113,12 @@ class _ProgressRaster(tk.Canvas):
         kw.setdefault("highlightthickness", 0)
         super().__init__(parent, **kw)
         self._data: np.ndarray = np.full((9, 9), np.nan)
+        self._active_diode: int | None = None
         self.bind("<Configure>", lambda _e: self._redraw())
 
-    def update_data(self, data: np.ndarray) -> None:
+    def update_data(self, data: np.ndarray, active_diode: int | None = None) -> None:
         self._data = data
+        self._active_diode = active_diode
         self._redraw()
 
     def _redraw(self) -> None:
@@ -129,24 +132,13 @@ class _ProgressRaster(tk.Canvas):
         fsz = max(5, cell // 6)
         font = ("TkFixedFont", fsz)
 
-        for r in range(self.GRID):
-            for c in range(self.GRID):
-                if (r, c) not in _VALID_PIXELS:
-                    continue
-                x0, y0 = ox + c * cell, oy + r * cell
-                x1, y1 = x0 + cell, y0 + cell
-                val  = self._data[r, c]
-                done = not np.isnan(val)
-                fill  = "#2a5e3a" if done else "#2e2e2e"
-                text  = str(int(val)) if done else "."
-                color = "#88ffaa"   if done else "#555555"
-                self.create_rectangle(x0, y0, x1, y1,
-                                      outline="#666666", fill=fill, width=1)
-                self.create_text((x0 + x1) // 2, (y0 + y1) // 2,
-                                 text=text, fill=color, font=font)
-
-
-
+        # Determine active pixel position
+        active_row, active_col = None, None
+        if self._active_diode is not None and self._active_diode < len(_SENSOR_POSITIONS):
+            pos = _SENSOR_POSITIONS[self._active_diode]
+            if pos is not None:
+                px, py = pos
+                active_row, active_col = py + 4, px + 4
 
         for r in range(self.GRID):
             for c in range(self.GRID):
@@ -156,13 +148,30 @@ class _ProgressRaster(tk.Canvas):
                 x1, y1 = x0 + cell, y0 + cell
                 val  = self._data[r, c]
                 done = not np.isnan(val)
-                fill  = "#2a5e3a" if done else "#2e2e2e"
-                text  = str(int(val)) if done else "."
-                color = "#88ffaa"   if done else "#555555"
+                
+                # Highlight active pixel in yellow
+                is_active = (r == active_row and c == active_col)
+                if is_active:
+                    fill = "#665500"
+                    text_color = "#ffff00"
+                    outline_color = "#ffff00"
+                    outline_width = 2
+                elif done:
+                    fill = "#2a5e3a"
+                    text_color = "#88ffaa"
+                    outline_color = "#666666"
+                    outline_width = 1
+                else:
+                    fill = "#2e2e2e"
+                    text_color = "#555555"
+                    outline_color = "#666666"
+                    outline_width = 1
+                
+                text = str(int(val)) if done else "."
                 self.create_rectangle(x0, y0, x1, y1,
-                                      outline="#666666", fill=fill, width=1)
+                                      outline=outline_color, fill=fill, width=outline_width)
                 self.create_text((x0 + x1) // 2, (y0 + y1) // 2,
-                                 text=text, fill=color, font=font)
+                                 text=text, fill=text_color, font=font)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -170,17 +179,31 @@ class _ProgressRaster(tk.Canvas):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class CalibrationMixin:
-    def _build_calibration_tab(self) -> None:
+    def _build_calibration_tab(self, sensor_active_fn) -> None:
+        """Build the calibration tab. sensor_active_fn is a callable that returns True if sensor is connected."""
         self._frame_calibration = tkk.Frame(self._tabview)
         self._tabview.add(self._frame_calibration, text="Calibration")
-        self._setup_calibration_tab()
+        self._setup_calibration_tab(sensor_active_fn)
 
-    def _setup_calibration_tab(self) -> None:
+    def _setup_calibration_tab(self, sensor_active_fn) -> None:
         # shape (9, 9, 2): axis-2 is [bright_adc, dark_adc]
         if not hasattr(self, "_cal_data"):
             self._cal_data = np.full((9, 9, 2), np.nan)
         self._cal_streaming = False
         self._cal_fetching  = False
+        
+        # Disable calibration tab if no sensor is connected
+        sensor_active = sensor_active_fn() if callable(sensor_active_fn) else sensor_active_fn
+        if not sensor_active:
+            for w in self._frame_calibration.winfo_children():
+                w.destroy()
+            tkk.Label(
+                self._frame_calibration,
+                text="No sensor detected",
+                foreground="red"
+            ).pack(expand=True)
+            return
+        
         self._show_calibration_main()
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -335,7 +358,12 @@ class CalibrationMixin:
         print("[CalibrationMixin] Save calibration stub called.")
 
     def _reset_calibration(self) -> None:
-        self._cal_data = np.full((9, 9, 2), np.nan)
+        # Set default calibration values: dark=0, bright=500
+        for r in range(9):
+            for c in range(9):
+                if (r, c) in _VALID_PIXELS:
+                    self._cal_data[r, c, 0] = 500  # bright
+                    self._cal_data[r, c, 1] = 0    # dark
         self._refresh_cal_raster()
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -435,7 +463,7 @@ class CalibrationMixin:
         self._cal_opt_dark_cover = OptionToggle(
             cover_lf, "Calibrate via full cover  (skip page 2):",
             initial=self._cal_dark_cover_val,
-            command=lambda v: setattr(self, "_cal_dark_cover_val", v),
+            command=lambda v: self._on_dark_cover_toggle(v),
         )
         self._cal_opt_dark_cover.add_to(cover_lf)
 
@@ -446,9 +474,22 @@ class CalibrationMixin:
             else:
                 self._show_wizard_page(2)
 
-        self._wizard_nav(root,
-                         back_cmd=self._show_calibration_main, back_label="Back to overview",
-                         next_cmd=_next)
+        next_label = "Calibrate Dark" if self._cal_dark_cover_val else "Next"
+        
+        # Create navigation bar and store reference to next button
+        bar = tkk.Frame(root)
+        bar.pack(fill="x", padx=10, pady=(4, 10), side="bottom")
+        tk.Button(bar, text="Back", command=self._show_calibration_main).pack(side="left", padx=4)
+        tk.Button(bar, text="Cancel", command=self._show_calibration_main).pack(side="left", padx=4)
+        self._cal_page1_next_btn = tk.Button(bar, text=next_label, command=_next)
+        self._cal_page1_next_btn.pack(side="right", padx=4)
+
+    def _on_dark_cover_toggle(self, enabled: bool) -> None:
+        """Update the next button text when cover shortcut toggle changes."""
+        setattr(self, "_cal_dark_cover_val", enabled)
+        if hasattr(self, '_cal_page1_next_btn'):
+            new_label = "Calibrate Dark" if enabled else "Next"
+            self._cal_page1_next_btn.configure(text=new_label)
 
     # ─────────────────────────────────────────────────────────────────────────
     #  PAGE 2 — Dark measurement
@@ -473,11 +514,11 @@ class CalibrationMixin:
         self._cal_graph_canvas = None
         self._build_cal_live_graph(graph_lf)
 
-        prog_lf = tkk.LabelFrame(root, text=" Calibrated pixels  (green = captured) ")
+        prog_lf = tkk.LabelFrame(root, text=" Calibrated pixels  (green = captured, yellow = active) ")
         prog_lf.pack(fill="x", padx=12, pady=4)
         self._cal_prog_lf_widget = _ProgressRaster(prog_lf, height=120)
         self._cal_prog_lf_widget.pack(fill="x")
-        self._cal_prog_lf_widget.update_data(self._cal_dark_data)
+        self._cal_prog_lf_widget.update_data(self._cal_dark_data, active_diode=getattr(self, '_cal_active_diode', None))
 
         if not self._cal_auto_measure_val:
             OptionButton(root, text="Calibrate Pixel",
@@ -560,11 +601,11 @@ class CalibrationMixin:
         self._cal_graph_canvas = None
         self._build_cal_live_graph(graph_lf)
 
-        prog_lf = tkk.LabelFrame(root, text=" Calibrated pixels  (green = captured) ")
+        prog_lf = tkk.LabelFrame(root, text=" Calibrated pixels  (green = captured, yellow = active) ")
         prog_lf.pack(fill="x", padx=12, pady=4)
         self._cal_prog_lf_widget = _ProgressRaster(prog_lf, height=120)
         self._cal_prog_lf_widget.pack(fill="x")
-        self._cal_prog_lf_widget.update_data(self._cal_bright_data)
+        self._cal_prog_lf_widget.update_data(self._cal_bright_data, active_diode=getattr(self, '_cal_active_diode', None))
 
         if not self._cal_auto_measure_val:
             OptionButton(root, text="Calibrate Pixel",
@@ -583,23 +624,48 @@ class CalibrationMixin:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_cal_live_graph(self, parent) -> None:
-        fig = Figure(figsize=(6, 2.4), tight_layout=True)
+        fig = Figure(figsize=(6, 1.8), tight_layout=True)
         self._cal_live_fig = fig
         ax = fig.add_subplot(111)
         self._cal_live_ax = ax
         ax.set_xlabel("Sample", fontsize=8)
-        ax.set_ylabel("ADC counts", fontsize=8)
-        ax.set_ylim(0, 65535)
+        ax.set_ylabel("ADC counts (log)", fontsize=8)
+        ax.set_yscale("log")
+        ax.set_ylim(1, 65535)  # Start from 1 for log scale
         ax.tick_params(labelsize=7)
         (self._cal_live_line,) = ax.plot([], [], color="#4ea6dc", lw=1.5, label="active diode")
         self._cal_live_peak_line = ax.axhline(
-            y=float("nan"), color="#ff8844", lw=1.0, linestyle="--", label="session peak"
+            y=float("nan"), color="#ff8844", lw=1.0, linestyle="--", label="peak since last change"
         )
+        # Store all diode change lines
+        self._cal_diode_change_lines = []
         ax.legend(fontsize=7, loc="upper left")
+        
+        # Add reset button below the graph
+        btn_frame = tkk.Frame(parent)
+        btn_frame.pack(fill="x", pady=(2, 0))
+        tkk.Button(btn_frame, text="Reset History", command=self._reset_cal_history,
+                   bootstyle="secondary-outline").pack(side="right", padx=4)
+        
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
         self._cal_graph_canvas = canvas
+        self._cal_last_active_diode = None
+        self._cal_diode_change_indices = []  # Track all diode change positions
+        self._cal_last_diode_change_idx = 0  # Index of last diode change for peak calculation
+
+    def _reset_cal_history(self) -> None:
+        """Reset the calibration history and clear diode change markers."""
+        self._cal_sensor_history = []
+        self._cal_diode_change_indices = []
+        self._cal_last_diode_change_idx = 0
+        # Clear all diode change lines from the plot
+        if hasattr(self, '_cal_diode_change_lines'):
+            for line in self._cal_diode_change_lines:
+                line.remove()
+            self._cal_diode_change_lines = []
+        self._update_cal_live_graph()
 
     def _cal_live_stream_loop(self) -> None:
         if not self._cal_streaming:
@@ -612,15 +678,31 @@ class CalibrationMixin:
         def _fetch() -> None:
             try:
                 if not self._sensor_active():
-                    t = len(self._cal_sensor_history)
-                    val: float = 30000 + 20000 * np.sin(t / 15.0) + np.random.uniform(-400, 400)
+                    val = float("nan")
                     self._cal_active_diode = 0
                 else:
                     raw = self._sensor.getRaw()
                     valid_idx = [i for i, p in enumerate(_SENSOR_POSITIONS) if p is not None]
-                    active = int(valid_idx[int(np.argmax([raw[i] for i in valid_idx]))])
-                    val = float(raw[active])
-                    self._cal_active_diode = active
+                    
+                    # In edit mode, only read from the specific pixel being edited
+                    page = getattr(self, "_cal_wizard_page", None)
+                    if page == "edit" and hasattr(self, '_cal_edit_row') and hasattr(self, '_cal_edit_col'):
+                        # Read only the pixel being edited
+                        row, col = self._cal_edit_row, self._cal_edit_col
+                        # Find the diode index for this row/col
+                        px, py = col - 4, row - 4
+                        try:
+                            idx = _SENSOR_POSITIONS.index((px, py))
+                            val = float(raw[idx])
+                            self._cal_active_diode = idx
+                        except (ValueError, IndexError):
+                            val = float("nan")
+                            self._cal_active_diode = 0
+                    else:
+                        # In wizard mode, track the brightest diode
+                        active = int(valid_idx[int(np.argmax([raw[i] for i in valid_idx]))])
+                        val = float(raw[active])
+                        self._cal_active_diode = active
             except Exception:
                 val = float("nan")
             finally:
@@ -655,11 +737,45 @@ class CalibrationMixin:
         h = self._cal_sensor_history
         if not h:
             return
+        
+        # Track diode changes and mark ALL of them on graph
+        if hasattr(self, '_cal_active_diode') and hasattr(self, '_cal_last_active_diode'):
+            if self._cal_last_active_diode is not None and self._cal_active_diode != self._cal_last_active_diode:
+                # Diode changed - record this position
+                change_idx = len(h) - 1
+                if not hasattr(self, '_cal_diode_change_indices'):
+                    self._cal_diode_change_indices = []
+                self._cal_diode_change_indices.append(change_idx)
+                self._cal_last_diode_change_idx = change_idx
+                
+                # Add a new vertical line for this diode change
+                if not hasattr(self, '_cal_diode_change_lines'):
+                    self._cal_diode_change_lines = []
+                line = self._cal_live_ax.axvline(
+                    x=change_idx, color="#ff4444", lw=1.0, linestyle=":", alpha=0.7
+                )
+                self._cal_diode_change_lines.append(line)
+            self._cal_last_active_diode = self._cal_active_diode
+        
         self._cal_live_line.set_data(list(range(len(h))), h)
         self._cal_live_ax.set_xlim(0, max(len(h) - 1, 1))
-        valid = [v for v in h if not np.isnan(v)]
+        
+        # Calculate peak since last diode change (not overall peak)
+        if not hasattr(self, '_cal_last_diode_change_idx'):
+            self._cal_last_diode_change_idx = 0
+        recent_data = h[self._cal_last_diode_change_idx:]
+        valid = [v for v in recent_data if not np.isnan(v) and v > 0]  # Exclude 0 for log scale
         if valid:
             self._cal_live_peak_line.set_ydata([max(valid), max(valid)])
+        
+        # Update the progress raster with the current active diode highlighted
+        if hasattr(self, '_cal_prog_lf_widget') and self._cal_prog_lf_widget is not None:
+            page = getattr(self, "_cal_wizard_page", None)
+            if page == 2:
+                self._cal_prog_lf_widget.update_data(self._cal_dark_data, active_diode=getattr(self, '_cal_active_diode', None))
+            elif page == 4:
+                self._cal_prog_lf_widget.update_data(self._cal_bright_data, active_diode=getattr(self, '_cal_active_diode', None))
+        
         try:
             self._cal_graph_canvas.draw_idle()
         except Exception:
@@ -689,7 +805,7 @@ class CalibrationMixin:
                 w = self._cal_prog_lf_widget
                 if w is not None:
                     data = self._cal_dark_data if dataset == "dark" else self._cal_bright_data
-                    w.update_data(data)
+                    w.update_data(data, active_diode=self._cal_active_diode)
 
     def _cal_dark_all_pixels(self) -> None:
         """Capture a single raw frame and store every channel as its dark reference."""

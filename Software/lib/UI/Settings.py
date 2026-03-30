@@ -4,7 +4,7 @@ import ttkbootstrap as tkk
 
 import lib.Sensor as Serial
 from lib.Config import getColorSchemes
-from lib.UI.Options import OptionDropdown, OptionToggle
+from lib.UI.Options import OptionDropdown, OptionSlider, OptionToggle
 
 
 class SettingsMixin:
@@ -24,13 +24,15 @@ class SettingsMixin:
         ).add_to(self._frame_settings)
 
         # Wafer Config
-        self._wafer_diameter_dropdown = OptionDropdown(
+        self._wafer_diameter_slider = OptionSlider(
             self._frame_settings, "Wafer diameter (mm)",
-            [str(v) for v in range(50, 151, 10)], "150",
+            min_val=50, max_val=150, initial=150,
+            custom_steps=[25, 5],
+            show_minmax=True,
             command=lambda _v: self._rebuild_raster_fig(),
             persistent=True,
         )
-        self._wafer_diameter_dropdown.add_to(self._frame_settings)
+        self._wafer_diameter_slider.add_to(self._frame_settings)
 
         self._mask_wafer_toggle = OptionToggle(
             self._frame_settings, "Mask values outside wafer dia.",

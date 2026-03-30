@@ -159,7 +159,8 @@ class OptionDropdown(Option):
 
 class OptionSlider(Option):
     """Slider with ±step button pairs. accuracy sets the number of button pairs.
-    Steps are descending powers of ten starting from the largest < (max-min)."""
+    Steps are descending powers of ten starting from the largest < (max-min),
+    unless custom_steps is provided (list of step sizes in descending order)."""
 
     _PAD = 13  # approx half the ttk Scale sliderlength (handle travel margin)
 
@@ -171,6 +172,7 @@ class OptionSlider(Option):
         max_val: int = 100,
         initial: int | None = None,
         accuracy: int = 1,
+        custom_steps: list[int] | None = None,
         show_minmax: bool = False,
         command: Callable[[int], None] | None = None,
         visibility: Callable[[], bool] | None = None,
@@ -183,11 +185,14 @@ class OptionSlider(Option):
         self._min, self._max = int(min_val), int(max_val)
         self._command = command
 
-        span = self._max - self._min
-        exp = max(0, math.floor(math.log10(span)) if span > 0 else 0)
-        while 10 ** exp >= span and exp > 0:
-            exp -= 1
-        self._steps = [max(1, 10 ** (exp - i)) for i in range(max(1, int(accuracy)))]
+        if custom_steps is not None:
+            self._steps = [int(s) for s in custom_steps]
+        else:
+            span = self._max - self._min
+            exp = max(0, math.floor(math.log10(span)) if span > 0 else 0)
+            while 10 ** exp >= span and exp > 0:
+                exp -= 1
+            self._steps = [max(1, 10 ** (exp - i)) for i in range(max(1, int(accuracy)))]
 
         if initial is None:
             initial = self._min
@@ -195,36 +200,43 @@ class OptionSlider(Option):
             initial = int(getCFGKey(self.config_key, initial))
         self.value = tk.IntVar(value=max(self._min, min(self._max, initial)))
 
-        self.columnconfigure(1, weight=1)
+        # Configure grid columns - column 1 should expand
+        self.columnconfigure(0, weight=0)  # dec buttons
+        self.columnconfigure(1, weight=1)  # slider
+        self.columnconfigure(2, weight=0)  # inc buttons
 
         # Row 0: name label
-        tkk.Label(self, text=label).grid(row=0, column=0, columnspan=3, sticky="w")
+        tkk.Label(self, text=label).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 2))
 
         # Row 1: value canvas spanning scale column (text tracks the slider dot)
         self._val_canvas = tk.Canvas(self, height=14, highlightthickness=0, bd=0)
-        self._val_canvas.grid(row=1, column=1, sticky="ew")
+        self._val_canvas.grid(row=1, column=1, sticky="ew", padx=0)
 
         # Row 2: [dec buttons | scale | inc buttons]
         _DEC = ["\u2212", "\u2212\u2212", "\u2212\u2212\u2212", "\u2212\u2212\u2212\u2212", "\u2212\u2212\u2212\u2212\u2212"]
         _INC = ["+", "++", "+++", "++++", "+++++"]
 
         dec = tkk.Frame(self)
-        dec.grid(row=2, column=0, sticky="e")
+        dec.grid(row=2, column=0, sticky="e", padx=(0, 4))
         for i, s in enumerate(reversed(self._steps)):
             tk.Button(dec, text=_DEC[min(i, 4)], command=lambda s=s: self._step(-s),
-                      padx=2, pady=0, font=("TkFixedFont", 8),
-                      relief="solid", bd=1).pack(side="right", padx=(1, 0))
+                      padx=6, pady=2, font=("TkFixedFont", 10),
+                      relief="solid", bd=1).pack(side="right", padx=(2, 0))
 
         self._scale = tkk.Scale(self, from_=self._min, to=self._max, orient="horizontal",
-                                variable=self.value, command=lambda _: self._on_change())
-        self._scale.grid(row=2, column=1, sticky="ew", padx=0)
+                                variable=self.value)
+        self._scale.grid(row=2, column=1, sticky="ew")
+        # Only fire command on release to avoid lag during dragging
+        self._scale.bind("<ButtonRelease-1>", lambda _: self._on_change())
+        # Update display during drag but don't fire command
+        self.value.trace_add("write", lambda *args: self._draw_val())
 
         inc = tkk.Frame(self)
-        inc.grid(row=2, column=2, sticky="w")
+        inc.grid(row=2, column=2, sticky="w", padx=(4, 0))
         for i, s in enumerate(reversed(self._steps)):
             tk.Button(inc, text=_INC[min(i, 4)], command=lambda s=s: self._step(s),
-                      padx=2, pady=0, font=("TkFixedFont", 8),
-                      relief="solid", bd=1).pack(side="left", padx=(0, 1))
+                      padx=6, pady=2, font=("TkFixedFont", 10),
+                      relief="solid", bd=1).pack(side="left", padx=(0, 2))
 
         if show_minmax:
             tkk.Label(self, text=str(self._min), font=("TkDefaultFont", 8)).grid(row=3, column=1, sticky="w")
