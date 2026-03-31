@@ -149,12 +149,21 @@ class Sensor:
                     continue
                 try:
                     ser = serial.Serial(device, self.baud, timeout=1)
-                    ser.write(b"r")
+                    ser.reset_input_buffer()
+                    ser.write(b"v")
                     ser.flush()
-                    time.sleep(0.1)
-                    if ser.in_waiting > 0:
+                    response = b""
+                    deadline = time.monotonic() + 2.0
+                    while time.monotonic() < deadline:
+                        chunk = ser.read(ser.in_waiting or 1)
+                        if chunk:
+                            response += chunk
+                            if b"\r" in response:
+                                break
+                    version = response.split(b"\r")[0].decode("ascii", errors="replace").strip()
+                    if version.startswith("V"):
                         self.ser = ser
-                        print(f"Connected to sensor on {device}")
+                        print(f"Connected to sensor on {device} (firmware {version})")
                         break
                     else:
                         ser.close()
