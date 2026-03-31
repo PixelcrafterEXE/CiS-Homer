@@ -78,20 +78,22 @@ class SettingsMixin:
             text="--:--:--    --.--. ----",
             foreground="",
         )
-        self._sys_time_option.add_to(self._frame_settings)
+        self._add_option(self._sys_time_option, self._frame_settings)
         self._update_sys_time_label()
 
-        OptionButton(
+        self._add_option(OptionButton(
             self._frame_settings,
             text="Sync time from Sensor",
             command=self._sync_time_from_sensor,
-        ).add_to(self._frame_settings)
+            visibility=self._sensor_active,
+        ), self._frame_settings)
 
-        OptionButton(
+        self._add_option(OptionButton(
             self._frame_settings,
             text="Write current time to Sensor EEPROM",
             command=self._write_sensor_time,
-        ).add_to(self._frame_settings)
+            visibility=self._sensor_active,
+        ), self._frame_settings)
 
     # ── Time helpers ──────────────────────────────────────────────────────
 
