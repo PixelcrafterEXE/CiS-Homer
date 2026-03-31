@@ -61,6 +61,7 @@ class UI(tkk.Tk, VisualizerMixin, CalibrationMixin, SettingsMixin, KeyboardMixin
                     self.after(0, lambda d=data, u=unmapped: self._raster_fig.update_data(d, unmapped=u))
             except Exception as e:
                 print(f"Error updating measurement: {e}")
+                self.after(0, lambda msg=str(e): self._show_error(msg))
                 if self._sensor and self._sensor.ser:
                     try:
                         self._sensor.ser.close()
@@ -132,3 +133,4 @@ class UI(tkk.Tk, VisualizerMixin, CalibrationMixin, SettingsMixin, KeyboardMixin
             self._rebuild_raster_fig()
 
         self._ui_sensor_state = sensor_active
+
