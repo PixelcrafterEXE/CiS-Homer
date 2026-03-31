@@ -1,4 +1,5 @@
 
+import datetime
 import serial
 from serial.tools import list_ports
 import re
@@ -73,6 +74,10 @@ positions = [
     (-3, 1),  # 63
     (-2, 3)   # 64
 ]
+
+# Ordered list of indices into `positions` for the 61 real photodiode channels.
+# NTC entries (indices 7, 32) and the reference diode (index 51) are excluded.
+valid_channel_indices: list[int] = [i for i, p in enumerate(positions) if p is not None]
 
 
 def listPorts() -> list:
@@ -226,17 +231,248 @@ class Sensor:
         '''ADC Rohwerte mit Kalibrierwerten aus eeprom verrechnet'''
         raise NotImplementedError("getCalibrated is not implemented yet. Calibration handling needs to be defined first.")
 
-    def readCalibration(self) -> np.ndarray:
-        '''Liest Kalibrierwerte (2 Werte x 2 byte x 64 Kanäle) aus.
-        Die Refferenzhelligkeiten der 2 gespeicherten Messungen werden ebenfalls aus dem eeprom gelesen.
-        Diese Funktion linearisiert anschließend die äquivalenten Helligkeiten für jeden Kanal 
-        und gibt sie als array aus 64*[f(0), f(65536)] zurück, wobei f die lineare Funktion ist, 
-        die durch die beiden Kalibrierpunkte definiert wird.'''
-        raise NotImplementedError("readCalibration is not implemented yet. Calibration handling needs to be defined first.")
-    
-    def writeCalibration(self, calibration_data: np.ndarray) -> None:
-        raise NotImplementedError("writeCalibration is not implemented yet. Calibration handling needs to be defined first.")
+    def readCalibration(self) -> dict:
+        '''Liest allgemeine Kalibrierinfos und Kalibrierkanalwerte aus dem EEPROM.
 
+        Sendet Keyword 'k' und empfängt 257 Byte
+
+        Byte-Layout (0-indiziert):
+          [0]      Kalibrierzähler
+          [1]      Tag
+          [2]      Monat
+          [3]      Jahr (letzte 2 Stellen)
+          [4]      Stunde
+          [5]      Minute
+          [6]      Sekunde
+          [7:9]    Gain (uint16 LE, kΩ)
+          [9:11]   Sollwert Kalibrator 1 (uint16 LE, µW/mm²)
+          [11:13]  Sollwert Kalibrator 2 (uint16 LE, µW/mm²)
+          [13:257] 61 Kanäle × 4 Byte: je 2 Byte cal1 (LE uint16), 2 Byte cal2 (LE uint16)
+
+        Gibt ein Dict zurück:
+          counter, day, month, year, hour, minute, second,
+          gain, setpoint_1, setpoint_2,
+          channel_values – np.ndarray shape (61, 2), dtype uint16
+            [:, 0] = Kalibrierwert Kalibrierstärke 1 (hell)
+            [:, 1] = Kalibrierwert Kalibrierstärke 2 (dunkel)
+          Kanalreihenfolge entspricht valid_channel_indices (None-Einträge übersprungen).
+        '''
+        ser = self.ser
+        if ser is None or not ser.is_open:
+            raise RuntimeError("Serial connection is not open.")
+
+        ser.reset_input_buffer()
+        ser.write(b'k')
+        ser.flush()
+
+        data = b''
+        deadline = time.monotonic() + 5.0
+        while len(data) < 257 and time.monotonic() < deadline:
+            chunk = ser.read(257 - len(data))
+            if chunk:
+                data += chunk
+
+        if len(data) < 257:
+            raise RuntimeError(
+                f"Incomplete calibration read: received {len(data)}/257 bytes."
+            )
+
+        channel_values = np.zeros((61, 2), dtype=np.uint16)
+        for ch in range(61):
+            base = 13 + ch * 4
+            channel_values[ch, 0] = int.from_bytes(data[base:base + 2],     "little")
+            channel_values[ch, 1] = int.from_bytes(data[base + 2:base + 4], "little")
+
+        return {
+            "counter":        data[0],
+            "day":            data[1],
+            "month":          data[2],
+            "year":           data[3],
+            "hour":           data[4],
+            "minute":         data[5],
+            "second":         data[6],
+            "gain":           int.from_bytes(data[7:9],   "little"),
+            "setpoint_1":     int.from_bytes(data[9:11],  "little"),
+            "setpoint_2":     int.from_bytes(data[11:13], "little"),
+            "channel_values": channel_values,
+        }
+    
+    
+    def writeCalibration(self,
+                         gain: int | None = None,
+                         setpoint_1: int | None = None,
+                         setpoint_2: int | None = None,
+                         channel_values: "np.ndarray | None" = None,
+                         day: int | None = None,
+                         month: int | None = None,
+                         year: int | None = None,
+                         hour: int | None = None,
+                         minute: int | None = None,
+                         second: int | None = None) -> None:
+        '''Schreibt Kalibrierinfos und Kalibrierkanalwerte in den EEPROM (Keyword 'a').
+
+        Felder die nicht übergeben werden (None) werden automatisch befüllt:
+          Datum/Uhrzeit → aktuelle Systemzeit
+          gain, setpoint_1, setpoint_2, channel_values → einmalig per 'k' aus dem EEPROM gelesen
+
+        Byte-Layout des 256-Byte-Payloads (0-indiziert):
+          [0]      Tag
+          [1]      Monat
+          [2]      Jahr (letzte 2 Stellen)
+          [3]      Stunde
+          [4]      Minute
+          [5]      Sekunde
+          [6:8]    Gain (uint16 LE, kΩ)
+          [8:10]   Sollwert Kalibrator 1 (uint16 LE, µW/mm²)
+          [10:12]  Sollwert Kalibrator 2 (uint16 LE, µW/mm²)
+          [12:256] 61 Kanäle × 4 Byte: je 2 Byte cal1 (LE uint16), 2 Byte cal2 (LE uint16)
+        '''
+        ser = self.ser
+        if ser is None or not ser.is_open:
+            raise RuntimeError("Serial connection is not open.")
+
+        # Fill missing data fields from EEPROM in a single read.
+        if any(v is None for v in (gain, setpoint_1, setpoint_2, channel_values)):
+            existing = self.readCalibration()
+            if gain           is None: gain           = existing["gain"]
+            if setpoint_1     is None: setpoint_1     = existing["setpoint_1"]
+            if setpoint_2     is None: setpoint_2     = existing["setpoint_2"]
+            if channel_values is None: channel_values = existing["channel_values"]
+
+        if channel_values.shape != (61, 2):
+            raise ValueError(
+                f"channel_values must have shape (61, 2), got {channel_values.shape}"
+            )
+
+        # Fill missing time fields from current system time.
+        now = datetime.datetime.now()
+        if day    is None: day    = now.day
+        if month  is None: month  = now.month
+        if year   is None: year   = now.year % 100
+        if hour   is None: hour   = now.hour
+        if minute is None: minute = now.minute
+        if second is None: second = now.second
+
+        payload = bytearray(256)
+        payload[0] = int(day)    & 0xFF
+        payload[1] = int(month)  & 0xFF
+        payload[2] = int(year)   & 0xFF
+        payload[3] = int(hour)   & 0xFF
+        payload[4] = int(minute) & 0xFF
+        payload[5] = int(second) & 0xFF
+        payload[6:8]   = int(gain).to_bytes(2,       "little")
+        payload[8:10]  = int(setpoint_1).to_bytes(2, "little")
+        payload[10:12] = int(setpoint_2).to_bytes(2, "little")
+
+        for ch in range(61):
+            base = 12 + ch * 4
+            payload[base:base + 2]     = int(channel_values[ch, 0]).to_bytes(2, "little")
+            payload[base + 2:base + 4] = int(channel_values[ch, 1]).to_bytes(2, "little")
+
+        ser.reset_input_buffer()
+        ser.write(b'a' + bytes(payload))
+        ser.flush()
+
+    def getCalibrationArray(self) -> np.ndarray:
+        '''Gibt Kalibrierwerte als (2, 64) Array zurück.
+
+        [0, i] = Kalibrierstärke 1 (hell) für Kanal i+1
+        [1, i] = Kalibrierstärke 2 (dunkel) für Kanal i+1
+        NaN an den ungültigen Indizes (NTC: 7, 32 / Referenzdiode: 51).
+        '''
+        cal = self.readCalibration()
+        arr = np.full((2, 64), np.nan)
+        for ch_idx, sensor_idx in enumerate(valid_channel_indices):
+            arr[0, sensor_idx] = float(cal["channel_values"][ch_idx, 0])
+            arr[1, sensor_idx] = float(cal["channel_values"][ch_idx, 1])
+        return arr
+
+    def writeCalibrationArray(self, cal_array: np.ndarray) -> None:
+        '''Schreibt Kalibrierwerte aus (2, 64) Array in EEPROM.
+
+        [0, i] = Kalibrierstärke 1 (hell) für Kanal i+1
+        [1, i] = Kalibrierstärke 2 (dunkel) für Kanal i+1
+        NaN-Einträge werden als 0 geschrieben.
+        '''
+        channel_values = np.zeros((61, 2), dtype=np.uint16)
+        for ch_idx, sensor_idx in enumerate(valid_channel_indices):
+            v0 = cal_array[0, sensor_idx]
+            v1 = cal_array[1, sensor_idx]
+            channel_values[ch_idx, 0] = 0 if np.isnan(v0) else int(np.clip(v0, 0, 65535))
+            channel_values[ch_idx, 1] = 0 if np.isnan(v1) else int(np.clip(v1, 0, 65535))
+        self.writeCalibration(channel_values=channel_values)
+
+    def getCalibrationCounter(self) -> int:
+        '''Liest den Kalibrierungszähler aus. Liest dafür einmal Keyword 'k'.'''
+        return int(self.readCalibration()["counter"])
+
+    def getTime(self) -> datetime.datetime:
+        '''Liest Datum/Uhrzeit aus dem EEPROM (Keyword 'k') und setzt sie im Betriebssystem.'''
+        import subprocess
+        cal = self.readCalibration()
+        year = cal["year"]
+        if year < 100:
+            year += 2000
+        dt = datetime.datetime(year, cal["month"], cal["day"],
+                               cal["hour"], cal["minute"], cal["second"])
+        subprocess.run( #needs permissions; todo: configure OS to allow
+            ["date", "-s", dt.strftime("%Y-%m-%d %H:%M:%S")],
+            check=True,
+        )
+        return dt
+
+    def setTime(self, day: int, month: int, year: int,
+                hour: int, minute: int, second: int) -> None:
+        '''Schreibt Datum/Uhrzeit in das EEPROM'''
+        self.writeCalibration(
+            day=day, month=month, year=year % 100,
+            hour=hour, minute=minute, second=second,
+        )
+
+    def getVersion(self) -> str:
+        '''liest die MCU-Firmware Version aus (Keyword 'v').
+
+        Sendet 'v', empfängt bis zu 16 Byte bis zum ersten \r und gibt den
+        String ohne \r zurück (z.B. "V100").
+        '''
+        ser = self.ser
+        if ser is None or not ser.is_open:
+            raise RuntimeError("Serial connection is not open.")
+
+        ser.reset_input_buffer()
+        ser.write(b'v')
+        ser.flush()
+
+        response = b''
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            chunk = ser.read(ser.in_waiting or 1)
+            if chunk:
+                response += chunk
+                if b'\r' in response:
+                    break
+
+        return response.split(b'\r')[0].decode('ascii', errors='replace').strip()
+
+    def getGain(self) -> int:
+        '''liest den Verstärkungsfaktor der Hardware aus EEPROM aus.'''
+        return int(self.readCalibration()["gain"])
+
+    def writeGain(self, gain: int) -> None:
+        '''schreibt den Verstärkungsfaktor der Hardware in EEPROM.'''
+        self.writeCalibration(gain=int(gain))
+
+    def getCalibrationReference(self) -> np.ndarray:
+        '''Bestrahlungsstärke ersten und zweiten Kalibrierung in µW/mm².
+
+        Gibt np.ndarray([setpoint_1, setpoint_2], dtype=uint16) zurück.
+        '''
+        cal = self.readCalibration()
+        return np.array([cal["setpoint_1"], cal["setpoint_2"]], dtype=np.uint16)
+
+    def writeCalibrationReference(self, setpoint_1: int, setpoint_2: int) -> None:
+        '''schreibt die Bestrahlungsstärke für die erste und zweite Kalibrierung in µW/mm² in EEPROM.'''
+        self.writeCalibration(setpoint_1=int(setpoint_1), setpoint_2=int(setpoint_2))
 
     def getMap(self, calibrated: bool = False, return_unmapped: bool = False, data_source: Optional[str] = None):
         '''returns the latest sensor frame mapped to a 9x9 grid.
