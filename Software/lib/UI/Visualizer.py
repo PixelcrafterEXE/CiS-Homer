@@ -78,7 +78,7 @@ class VisualizerMixin:
         ), col_meas)
 
         self._data_source_dropdown = OptionDropdown(
-            col_meas, "Data source", ["raw", "calibrated", "mW/mm²"], "raw",
+            col_meas, "Data source", ["raw", "calibrated", "Irradiance (in μW/mm²)"], "raw",
             command=lambda _v: self._update_measurement(), persistent=True,
         )
         self._add_option(self._data_source_dropdown, col_meas)
