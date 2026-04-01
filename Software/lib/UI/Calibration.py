@@ -8,7 +8,7 @@ import ttkbootstrap as tkk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from lib.Sensor import positions as _SENSOR_POSITIONS
+from lib.Sensor import positions as _SENSOR_POSITIONS, valid_channel_indices as _VALID_CHANNEL_INDICES
 from lib.UI.Options import OptionButton, OptionEntry, OptionToggle
 
 # ── Module-level helpers ──────────────────────────────────────────────────────
@@ -205,6 +205,19 @@ class CalibrationMixin:
             return
         
         self._show_calibration_main()
+        self._load_calibration_from_sensor()
+
+        # Reload whenever the user switches to the Calibration tab
+        def _on_tab_changed(_event: object) -> None:
+            try:
+                if self._tabview.index("current") == self._tabview.index(self._frame_calibration):
+                    # Only reload if we're on the main calibration page (not inside a wizard)
+                    if getattr(self, "_cal_wizard_page", None) is None:
+                        self._load_calibration_from_sensor()
+            except Exception:
+                pass
+
+        self._tabview.bind("<<NotebookTabChanged>>", _on_tab_changed)
 
     # ─────────────────────────────────────────────────────────────────────────
     #  MAIN PAGE
@@ -227,12 +240,45 @@ class CalibrationMixin:
             fill="x", padx=12, pady=(10, 2)
         )
 
-        legend = tkk.Frame(root)
-        legend.pack(fill="x", padx=12, pady=(0, 2))
-        tkk.Label(legend, text="Top = bright reference", foreground="#44cc88",
-                  font=("TkDefaultFont", 8)).pack(side="left", padx=(0, 16))
-        tkk.Label(legend, text="Bottom = dark reference", foreground="#aa88ff",
-                  font=("TkDefaultFont", 8)).pack(side="left")
+        # ── Setpoints ─────────────────────────────────────────────────────────
+        sp_lf = tkk.LabelFrame(root, text=" Calibration Reference Points ")
+        sp_lf.pack(fill="x", padx=12, pady=(0, 4))
+        sp_inner = tkk.Frame(sp_lf)
+        sp_inner.pack(fill="x", padx=8, pady=6)
+
+        tkk.Label(sp_inner, text="Setpoint 1 (top, bright):").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        self._cal_sp1_label = tkk.Label(
+            sp_inner,
+            text=str(getattr(self, "_cal_setpoint_1", "—")),
+            foreground="#44cc88", font=("TkDefaultFont", 10, "bold"),
+        )
+        self._cal_sp1_label.grid(row=0, column=1, sticky="w")
+        tkk.Label(sp_inner, text="µW/mm²").grid(row=0, column=2, sticky="w", padx=(3, 24))
+
+        tkk.Label(sp_inner, text="Setpoint 2 (bottom, dark):").grid(row=0, column=3, sticky="w", padx=(0, 6))
+        self._cal_sp2_label = tkk.Label(
+            sp_inner,
+            text=str(getattr(self, "_cal_setpoint_2", "—")),
+            foreground="#aa88ff", font=("TkDefaultFont", 10, "bold"),
+        )
+        self._cal_sp2_label.grid(row=0, column=4, sticky="w")
+        tkk.Label(sp_inner, text="µW/mm²").grid(row=0, column=5, sticky="w", padx=(3, 0))
+
+        # Calibration counter (from cache; updated on every load)
+        counter_val = "—"
+        if hasattr(self, '_sensor') and self._sensor_active() and getattr(self._sensor, '_calibration_cache', None):
+            c = self._sensor._calibration_cache.get("counter")
+            if c is not None:
+                counter_val = str(int(c))
+        tkk.Label(sp_inner, text="Cal. count:", foreground="gray").grid(
+            row=0, column=6, sticky="w", padx=(20, 4))
+        self._cal_count_label = tkk.Label(sp_inner, text=counter_val, foreground="gray",
+                  font=("TkDefaultFont", 10, "bold"))
+        self._cal_count_label.grid(row=0, column=7, sticky="w")
+
+        self._cal_load_status = tkk.Label(sp_inner, text="", foreground="gray",
+                                          font=("TkDefaultFont", 8))
+        self._cal_load_status.grid(row=1, column=0, columnspan=8, sticky="w", pady=(2, 0))
 
         self._cal_raster = _CalRaster(root, click_callback=self._show_edit_page)
         self._cal_raster.pack(fill="both", expand=True, padx=12, pady=4)
@@ -243,12 +289,15 @@ class CalibrationMixin:
         btn_bar.columnconfigure(0, weight=1)
         btn_bar.columnconfigure(1, weight=1)
         btn_bar.columnconfigure(2, weight=1)
-        tk.Button(btn_bar, text="Save Calibration",
-                  command=self._save_calibration).grid(row=0, column=0, padx=4, sticky="ew")
+        btn_bar.columnconfigure(3, weight=1)
+        tk.Button(btn_bar, text="Load from Sensor",
+                  command=self._load_calibration_from_sensor).grid(row=0, column=0, padx=4, sticky="ew")
+        tk.Button(btn_bar, text="Save to Sensor",
+                  command=self._save_calibration).grid(row=0, column=1, padx=4, sticky="ew")
         tk.Button(btn_bar, text="Reset Calibration",
-                  command=self._reset_calibration).grid(row=0, column=1, padx=4, sticky="ew")
+                  command=self._reset_calibration).grid(row=0, column=2, padx=4, sticky="ew")
         tk.Button(btn_bar, text="Start Calibration Wizard",
-                  command=self._start_calibration_wizard).grid(row=0, column=2, padx=4, sticky="ew")
+                  command=self._start_calibration_wizard).grid(row=0, column=3, padx=4, sticky="ew")
 
     def _refresh_cal_raster(self) -> None:
         if hasattr(self, "_cal_raster"):
@@ -287,12 +336,12 @@ class CalibrationMixin:
         d_init = "" if np.isnan(self._cal_data[row, col, 1]) else str(int(self._cal_data[row, col, 1]))
 
         self._edit_bright_opt = OptionEntry(
-            manual_lf, f"Bright reference  (target: {tb_str} ADC):",
+            manual_lf, f"Bright reference  (setpoint: {tb_str} µW/mm²):",
             initial=b_init, numeric=True)
         self._edit_bright_opt.add_to(manual_lf)
 
         self._edit_dark_opt = OptionEntry(
-            manual_lf, f"Dark reference  (target: {td_str} ADC):",
+            manual_lf, f"Dark reference  (setpoint: {td_str} µW/mm²):",
             initial=d_init, numeric=True)
         self._edit_dark_opt.add_to(manual_lf)
 
@@ -354,16 +403,110 @@ class CalibrationMixin:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _save_calibration(self) -> None:
-        # TODO: pack _cal_data and call self._sensor.writeCalibration(...)
-        print("[CalibrationMixin] Save calibration stub called.")
+        if not self._sensor_active():
+            self._show_error("Save failed: sensor not connected.")
+            return
+
+        channel_values = np.zeros((61, 2), dtype=np.uint16)
+        for ch_idx, sensor_idx in enumerate(_VALID_CHANNEL_INDICES):
+            pos = _SENSOR_POSITIONS[sensor_idx]
+            if pos is None:
+                continue
+            px, py = pos
+            row, col = py + 4, px + 4
+            v0 = self._cal_data[row, col, 0]
+            v1 = self._cal_data[row, col, 1]
+            channel_values[ch_idx, 0] = 0 if np.isnan(v0) else int(np.clip(v0, 0, 65535))
+            channel_values[ch_idx, 1] = 0 if np.isnan(v1) else int(np.clip(v1, 0, 65535))
+
+        sp1 = getattr(self, "_cal_setpoint_1", 1000)
+        sp2 = getattr(self, "_cal_setpoint_2", 1200)
+
+        if hasattr(self, "_cal_load_status"):
+            self._cal_load_status.configure(text="Saving to sensor…", foreground="gray")
+
+        def _write() -> None:
+            try:
+                self._sensor.writeCalibration(
+                    channel_values=channel_values,
+                    setpoint_1=int(sp1),
+                    setpoint_2=int(sp2),
+                )
+                self.after(0, lambda: (
+                    self._cal_load_status.configure(text="Saved.", foreground="#44cc88")
+                    if hasattr(self, "_cal_load_status") else None
+                ))
+            except Exception as e:
+                self.after(0, lambda msg=str(e): (
+                    self._show_error(f"Save failed: {msg}"),
+                    self._cal_load_status.configure(text=f"Save failed: {msg}", foreground="red")
+                    if hasattr(self, "_cal_load_status") else None,
+                ))
+
+        threading.Thread(target=_write, daemon=True).start()
+
+    def _load_calibration_from_sensor(self) -> None:
+        """Read calibration EEPROM and populate _cal_data + setpoint labels."""
+        if not self._sensor_active():
+            return
+        if hasattr(self, "_cal_load_status"):
+            self._cal_load_status.configure(text="Loading from sensor…", foreground="gray")
+
+        def _fetch() -> None:
+            try:
+                cal = self._sensor.readCalibration()
+                new_data = np.full((9, 9, 2), np.nan)
+                for ch_idx, sensor_idx in enumerate(_VALID_CHANNEL_INDICES):
+                    pos = _SENSOR_POSITIONS[sensor_idx]
+                    if pos is None:
+                        continue
+                    px, py = pos
+                    row, col = py + 4, px + 4
+                    new_data[row, col, 0] = float(cal["channel_values"][ch_idx, 0])
+                    new_data[row, col, 1] = float(cal["channel_values"][ch_idx, 1])
+                self.after(0, lambda d=new_data, s1=cal["setpoint_1"], s2=cal["setpoint_2"], cnt=cal["counter"]:
+                           self._apply_loaded_calibration(d, s1, s2, cnt))
+            except Exception as e:
+                self.after(0, lambda msg=str(e): self._on_cal_load_error(msg))
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    def _apply_loaded_calibration(self, data: np.ndarray, sp1: int, sp2: int, counter: int | None = None) -> None:
+        self._cal_data = data
+        self._cal_setpoint_1 = sp1
+        self._cal_setpoint_2 = sp2
+        if hasattr(self, "_cal_raster"):
+            self._cal_raster.update_data(data)
+        if hasattr(self, "_cal_sp1_label"):
+            self._cal_sp1_label.configure(text=str(sp1))
+        if hasattr(self, "_cal_sp2_label"):
+            self._cal_sp2_label.configure(text=str(sp2))
+        if hasattr(self, "_cal_count_label") and counter is not None:
+            self._cal_count_label.configure(text=str(int(counter)))
+        if hasattr(self, "_cal_load_status"):
+            self._cal_load_status.configure(text="Loaded from sensor.", foreground="#44cc88")
+
+    def _on_cal_load_error(self, msg: str) -> None:
+        if hasattr(self, "_cal_load_status"):
+            self._cal_load_status.configure(text=f"Load failed: {msg}", foreground="red")
+        self._show_error(f"Calibration load failed: {msg}")
 
     def _reset_calibration(self) -> None:
-        # Set default calibration values: dark=0, bright=500
+        # Reset channel data: dark=0, bright=500
         for r in range(9):
             for c in range(9):
                 if (r, c) in _VALID_PIXELS:
                     self._cal_data[r, c, 0] = 500  # bright
                     self._cal_data[r, c, 1] = 0    # dark
+        # Reset setpoints to firmware defaults
+        self._cal_setpoint_1 = 1000
+        self._cal_setpoint_2 = 0
+        if hasattr(self, "_cal_sp1_label"):
+            self._cal_sp1_label.configure(text="1000")
+        if hasattr(self, "_cal_sp2_label"):
+            self._cal_sp2_label.configure(text="0")
+        if hasattr(self, "_cal_load_status"):
+            self._cal_load_status.configure(text="Reset to defaults.", foreground="gray")
         self._refresh_cal_raster()
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -373,8 +516,8 @@ class CalibrationMixin:
     def _start_calibration_wizard(self) -> None:
         self._cal_auto_measure_val  = False
         self._cal_dark_cover_val    = False
-        self._cal_target_dark_str   = "0"
-        self._cal_target_bright_str = "65535"
+        self._cal_target_dark_str   = str(getattr(self, "_cal_setpoint_2", 1200))
+        self._cal_target_bright_str = str(getattr(self, "_cal_setpoint_1", 1000))
         self._cal_opt_target_bright = None
         self._cal_opt_target_dark   = None
         self._cal_opt_auto_measure  = None
@@ -433,11 +576,15 @@ class CalibrationMixin:
 
         form = tkk.LabelFrame(root, text=" Settings ")
         form.pack(fill="x", padx=12, pady=4)
+        self._cal_page1_settings_frame = form  # stored so cover toggle can hide it
 
         self._cal_opt_target_dark = OptionEntry(
-            form, "Target dark value  (ADC counts):",
+            form, "Target dark value  (µW/mm²):",
             initial=self._cal_target_dark_str, numeric=True,
-            command=lambda v: setattr(self, "_cal_target_dark_str", v),
+            command=lambda v: (
+                setattr(self, "_cal_target_dark_str", v),
+                setattr(self, "_cal_setpoint_2", int(v) if v.strip().isdigit() else getattr(self, "_cal_setpoint_2", 1200)),
+            ),
         )
         self._cal_opt_target_dark.add_to(form)
 
@@ -450,6 +597,11 @@ class CalibrationMixin:
 
         cover_lf = tkk.LabelFrame(root, text=" Cover-sensor shortcut ")
         cover_lf.pack(fill="x", padx=12, pady=4)
+        self._cal_page1_cover_frame = cover_lf  # stored for pack ordering
+
+        # If cover shortcut is already active when page is rendered, hide the settings form
+        if self._cal_dark_cover_val:
+            form.pack_forget()
         tkk.Label(
             cover_lf,
             text=(
@@ -485,11 +637,19 @@ class CalibrationMixin:
         self._cal_page1_next_btn.pack(side="right", padx=4)
 
     def _on_dark_cover_toggle(self, enabled: bool) -> None:
-        """Update the next button text when cover shortcut toggle changes."""
+        """Update the next button text and hide/show settings when cover shortcut toggles."""
         setattr(self, "_cal_dark_cover_val", enabled)
         if hasattr(self, '_cal_page1_next_btn'):
-            new_label = "Calibrate Dark" if enabled else "Next"
-            self._cal_page1_next_btn.configure(text=new_label)
+            self._cal_page1_next_btn.configure(text="Calibrate Dark" if enabled else "Next")
+        if hasattr(self, '_cal_page1_settings_frame'):
+            if enabled:
+                self._cal_page1_settings_frame.pack_forget()
+            elif hasattr(self, '_cal_page1_cover_frame'):
+                # Re-insert before the cover frame to preserve original order
+                self._cal_page1_settings_frame.pack(
+                    fill="x", padx=12, pady=4,
+                    before=self._cal_page1_cover_frame,
+                )
 
     # ─────────────────────────────────────────────────────────────────────────
     #  PAGE 2 — Dark measurement
@@ -555,9 +715,12 @@ class CalibrationMixin:
         form.pack(fill="x", padx=12, pady=4)
 
         self._cal_opt_target_bright = OptionEntry(
-            form, "Target brightness  (ADC counts):",
+            form, "Target brightness  (µW/mm²):",
             initial=self._cal_target_bright_str, numeric=True,
-            command=lambda v: setattr(self, "_cal_target_bright_str", v),
+            command=lambda v: (
+                setattr(self, "_cal_target_bright_str", v),
+                setattr(self, "_cal_setpoint_1", int(v) if v.strip().isdigit() else getattr(self, "_cal_setpoint_1", 1000)),
+            ),
         )
         self._cal_opt_target_bright.add_to(form)
 

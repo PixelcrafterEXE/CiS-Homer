@@ -6,6 +6,8 @@ import os
 import threading
 import time
 
+import numpy as np
+
 from lib.Sensor import Sensor
 
 _target_part = None
@@ -51,7 +53,7 @@ def is_usb_available() -> bool:
     return _usb_available
 
 def export_data(sensor: Sensor) -> None:
-    #todo: export calibrated, mW/mm² as seperate columns. Add second table with timestamp, sensor settings, temperatures, ref-diode, hwid...
+    #todo: export calibrated, uW/mm² as seperate columns. Add second table with timestamp, sensor settings, temperatures, ref-diode, hwid...
     if not _target_part:
         return
         
@@ -84,17 +86,30 @@ def export_data(sensor: Sensor) -> None:
             raw_data = sensor.getRaw()
         except Exception as e:
             print(f"Error reading from sensor: {e}")
-            return 
+            return
+
+        try:
+            cal_data = sensor.getCalibrated()
+        except Exception as e:
+            print(f"Could not read calibrated data, exporting raw only: {e}")
+            cal_data = None
 
         # Save to CSV
         filename = datetime.datetime.now().strftime("Measurement_%Y%m%d_%H%M%S.csv")
         filepath = os.path.join(mount_point, filename)
-        
+
         with open(filepath, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(["Raw_Data"])
-            for val in raw_data:
-                writer.writerow([val])
+            if cal_data is not None:
+                writer.writerow(["Channel", "Raw_ADC", "Irradiance_uW_per_mm2"])
+                for i, raw_val in enumerate(raw_data):
+                    cal_val = cal_data[i]
+                    irr_str = f"{cal_val:.4f}" if not np.isnan(cal_val) else ""
+                    writer.writerow([i + 1, int(raw_val), irr_str])
+            else:
+                writer.writerow(["Channel", "Raw_ADC"])
+                for i, raw_val in enumerate(raw_data):
+                    writer.writerow([i + 1, int(raw_val)])
                 
         # Only unmount if we mounted it in this session. If the system already mounted it before, don't unmount it
         if not already_mounted:

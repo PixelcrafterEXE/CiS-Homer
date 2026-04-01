@@ -313,7 +313,6 @@ class UI(tkk.Tk):
             self._options_toggle_btn.configure(text="▲ Show options ▲")
 
     def _rebuild_raster_fig(self) -> None:
-        # ... (Rest of the method remains identical to your provided code) ...
         if not self._sensor_active(): return
         if hasattr(self, '_raster_canvas') and self._raster_canvas:
             self._raster_canvas.get_tk_widget().destroy()

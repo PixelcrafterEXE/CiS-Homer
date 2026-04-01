@@ -40,8 +40,11 @@ class OptionButton(Option):
 class OptionLabel(Option):
     def __init__(self, parent, text: str, foreground: str = "red", visibility: Callable[[], bool] | None = None) -> None:
         super().__init__(parent, visibility=visibility)
-        label = tkk.Label(self, text=text, foreground=foreground)
-        label.grid(row=0, column=0, sticky="w")
+        self._label_widget = tkk.Label(self, text=text, foreground=foreground)
+        self._label_widget.grid(row=0, column=0, sticky="w")
+
+    def set_text(self, text: str) -> None:
+        self._label_widget.configure(text=text)
 
 class OptionEntry(Option):
     """Labelled text-entry field.

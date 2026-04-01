@@ -61,6 +61,7 @@ class UI(tkk.Tk, VisualizerMixin, CalibrationMixin, SettingsMixin, KeyboardMixin
                     self.after(0, lambda d=data, u=unmapped: self._raster_fig.update_data(d, unmapped=u))
             except Exception as e:
                 print(f"Error updating measurement: {e}")
+                self.after(0, lambda msg=str(e): self._show_error(msg))
                 if self._sensor and self._sensor.ser:
                     try:
                         self._sensor.ser.close()
@@ -89,6 +90,38 @@ class UI(tkk.Tk, VisualizerMixin, CalibrationMixin, SettingsMixin, KeyboardMixin
                     option.pack(in_=option._parent_container, fill="x", padx=8, pady=5)
 
         self.after(100, self._update_loop)
+
+    def _show_error(self, message: str) -> None:
+        """Display a transient error toast at the bottom of the window for a few seconds."""
+        # Cancel any pending auto-dismiss
+        if hasattr(self, '_error_after_id') and self._error_after_id:
+            self.after_cancel(self._error_after_id)
+            self._error_after_id = None
+
+        # Create overlay lazily (child of root so _build_main_panel never destroys it)
+        if not hasattr(self, '_error_overlay'):
+            self._error_overlay = tkk.Frame(self, bootstyle="danger", padding=(16, 10))
+            self._error_label = tkk.Label(
+                self._error_overlay,
+                text="",
+                bootstyle="inverse-danger",
+                wraplength=700,
+                justify="center",
+                font=("TkDefaultFont", 11),
+            )
+            self._error_label.pack(expand=True)
+
+        self._error_label.configure(text=message)
+        # Place near the bottom-centre, above any nav chrome
+        self._error_overlay.place(relx=0.5, rely=1.0, anchor="s", relwidth=0.95, y=-12)
+        self._error_overlay.lift()
+
+        self._error_after_id = self.after(4000, self._dismiss_error)
+
+    def _dismiss_error(self) -> None:
+        self._error_after_id = None
+        if hasattr(self, '_error_overlay'):
+            self._error_overlay.place_forget()
 
     def _on_closing(self) -> None:
         if self._sensor is not None:
@@ -132,3 +165,4 @@ class UI(tkk.Tk, VisualizerMixin, CalibrationMixin, SettingsMixin, KeyboardMixin
             self._rebuild_raster_fig()
 
         self._ui_sensor_state = sensor_active
+

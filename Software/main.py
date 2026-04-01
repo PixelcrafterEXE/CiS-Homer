@@ -1,5 +1,5 @@
 from lib.UI import UI
-
+from lib.Sensor import Sensor
 
 def main():
     ui = UI()

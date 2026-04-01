@@ -27,12 +27,14 @@ class RasterFigure(Figure):
         manualLo: float | None = None,
         manualHi: float | None = None,
         onManualRangeChange=None,
+        firmware_version: str | None = None,
         *args,
         **kwargs,
     ):
         kwargs.setdefault('figsize', (8, 6))
         super().__init__(*args, **kwargs)
         
+        self._firmware_version = firmware_version or ""
         self.rangeMode = (rangeMode or ("auto" if autoRange else "manual")).lower()
         if self.rangeMode not in ("auto", "manual", "max"):
             self.rangeMode = "manual"
@@ -318,7 +320,10 @@ class RasterFigure(Figure):
         valid = data[~np.isnan(data)]
         if valid.size == 0:
             base_text = "Median: -\nMean: -\nHomogenität: -"
-            self._stats_text.set_text(f"{base_text}\n{format_unmapped_lines(unmapped)}")
+            text = f"{base_text}\n{format_unmapped_lines(unmapped)}"
+            if self._firmware_version:
+                text += f"\nFW {self._firmware_version}"
+            self._stats_text.set_text(text)
             return
 
         median = float(np.median(valid))
@@ -335,7 +340,22 @@ class RasterFigure(Figure):
             f"Homogeneity: {homo_text}"
         )
         stats_text += f"\n{format_unmapped_lines(unmapped)}"
+        if self._firmware_version:
+            stats_text += f"\nFW {self._firmware_version}"
         self._stats_text.set_text(stats_text)
+
+    def set_firmware_version(self, version: str) -> None:
+        """Update the firmware version shown in the stats text box."""
+        self._firmware_version = version or ""
+        if self._stats_text is not None:
+            # Re-trigger an update with the last data (stats text already set;
+            # just poke it so the version line appears on the next draw)
+            current = self._stats_text.get_text()
+            # Remove any previous FW line and append the new one
+            lines = [l for l in current.splitlines() if not l.startswith("FW ")]
+            if self._firmware_version:
+                lines.append(f"FW {self._firmware_version}")
+            self._stats_text.set_text("\n".join(lines))
 
     def _circle_geometry(self, rows: int, cols: int) -> tuple[float, float, float]:
         center_x = (cols - 1) / 2.0
