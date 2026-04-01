@@ -109,10 +109,10 @@ class VisualizerMixin:
         col_exp = tkk.LabelFrame(cols_container, text=" Export ")
         col_exp.grid(row=0, column=2, sticky="nsew", padx=5, pady=5)
 
-        from lib.Export import export_data, is_usb_available
+        from lib.Export import is_usb_available
 
         self._add_option(OptionButton(
-            col_exp, "Export CSV to USB", command=lambda: export_data(self._sensor),
+            col_exp, "Export CSV to USB", command=self._export_to_usb,
             visibility=is_usb_available,
         ), col_exp)
 
@@ -136,6 +136,15 @@ class VisualizerMixin:
         else:
             self._options_panel.grid_forget()
             self._options_toggle_btn.configure(text="▲ Show options ▲")
+
+    def _export_to_usb(self) -> None:
+        """Start a background CSV export and show a success or error toast when done."""
+        from lib.Export import export_data
+        export_data(
+            self._sensor,
+            on_success=lambda: self.after(0, lambda: self._show_success("Export saved to USB drive.")),
+            on_error=lambda msg: self.after(0, lambda: self._show_error(msg)),
+        )
 
     def _store_manual_range(self, lo: float, hi: float) -> None:
         setCFGKey("manual_range_lo", float(lo))

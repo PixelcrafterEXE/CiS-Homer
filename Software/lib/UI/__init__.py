@@ -123,6 +123,34 @@ class UI(tkk.Tk, VisualizerMixin, CalibrationMixin, SettingsMixin, KeyboardMixin
         if hasattr(self, '_error_overlay'):
             self._error_overlay.place_forget()
 
+    def _show_success(self, message: str) -> None:
+        """Display a transient success toast at the bottom of the window for ~2.5 s."""
+        if hasattr(self, '_success_after_id') and self._success_after_id:
+            self.after_cancel(self._success_after_id)
+            self._success_after_id = None
+
+        if not hasattr(self, '_success_overlay'):
+            self._success_overlay = tkk.Frame(self, bootstyle="success", padding=(16, 10))
+            self._success_label = tkk.Label(
+                self._success_overlay,
+                text="",
+                bootstyle="inverse-success",
+                wraplength=700,
+                justify="center",
+                font=("TkDefaultFont", 11),
+            )
+            self._success_label.pack(expand=True)
+
+        self._success_label.configure(text=message)
+        self._success_overlay.place(relx=0.5, rely=1.0, anchor="s", relwidth=0.95, y=-12)
+        self._success_overlay.lift()
+        self._success_after_id = self.after(2500, self._dismiss_success)
+
+    def _dismiss_success(self) -> None:
+        self._success_after_id = None
+        if hasattr(self, '_success_overlay'):
+            self._success_overlay.place_forget()
+
     def _on_closing(self) -> None:
         if self._sensor is not None:
             self._sensor.stop()

@@ -546,8 +546,12 @@ class Sensor:
             year += 2000
         dt = datetime.datetime(year, cal["month"], cal["day"],
                                cal["hour"], cal["minute"], cal["second"])
-        subprocess.run( #needs permissions; todo: configure OS to allow
-            ["date", "-s", dt.strftime("%Y-%m-%d %H:%M:%S")],
+        # timedatectl set-time goes through polkit (see Firmware/stage-homer
+        # 01-setup-homer/01-run.sh rule 10-timedate.rules) — no sudo needed.
+        # NTP must be disabled before allowing a manual time set.
+        subprocess.run(["timedatectl", "set-ntp", "false"], check=True)
+        subprocess.run(
+            ["timedatectl", "set-time", dt.strftime("%Y-%m-%d %H:%M:%S")],
             check=True,
         )
         return dt
