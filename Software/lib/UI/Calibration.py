@@ -264,9 +264,21 @@ class CalibrationMixin:
         self._cal_sp2_label.grid(row=0, column=4, sticky="w")
         tkk.Label(sp_inner, text="µW/mm²").grid(row=0, column=5, sticky="w", padx=(3, 0))
 
+        # Calibration counter (from cache; updated on every load)
+        counter_val = "—"
+        if hasattr(self, '_sensor') and self._sensor_active() and getattr(self._sensor, '_calibration_cache', None):
+            c = self._sensor._calibration_cache.get("counter")
+            if c is not None:
+                counter_val = str(int(c))
+        tkk.Label(sp_inner, text="Cal. count:", foreground="gray").grid(
+            row=0, column=6, sticky="w", padx=(20, 4))
+        self._cal_count_label = tkk.Label(sp_inner, text=counter_val, foreground="gray",
+                  font=("TkDefaultFont", 10, "bold"))
+        self._cal_count_label.grid(row=0, column=7, sticky="w")
+
         self._cal_load_status = tkk.Label(sp_inner, text="", foreground="gray",
                                           font=("TkDefaultFont", 8))
-        self._cal_load_status.grid(row=1, column=0, columnspan=6, sticky="w", pady=(2, 0))
+        self._cal_load_status.grid(row=1, column=0, columnspan=8, sticky="w", pady=(2, 0))
 
         self._cal_raster = _CalRaster(root, click_callback=self._show_edit_page)
         self._cal_raster.pack(fill="both", expand=True, padx=12, pady=4)
@@ -452,14 +464,14 @@ class CalibrationMixin:
                     row, col = py + 4, px + 4
                     new_data[row, col, 0] = float(cal["channel_values"][ch_idx, 0])
                     new_data[row, col, 1] = float(cal["channel_values"][ch_idx, 1])
-                self.after(0, lambda d=new_data, s1=cal["setpoint_1"], s2=cal["setpoint_2"]:
-                           self._apply_loaded_calibration(d, s1, s2))
+                self.after(0, lambda d=new_data, s1=cal["setpoint_1"], s2=cal["setpoint_2"], cnt=cal["counter"]:
+                           self._apply_loaded_calibration(d, s1, s2, cnt))
             except Exception as e:
                 self.after(0, lambda msg=str(e): self._on_cal_load_error(msg))
 
         threading.Thread(target=_fetch, daemon=True).start()
 
-    def _apply_loaded_calibration(self, data: np.ndarray, sp1: int, sp2: int) -> None:
+    def _apply_loaded_calibration(self, data: np.ndarray, sp1: int, sp2: int, counter: int | None = None) -> None:
         self._cal_data = data
         self._cal_setpoint_1 = sp1
         self._cal_setpoint_2 = sp2
@@ -469,6 +481,8 @@ class CalibrationMixin:
             self._cal_sp1_label.configure(text=str(sp1))
         if hasattr(self, "_cal_sp2_label"):
             self._cal_sp2_label.configure(text=str(sp2))
+        if hasattr(self, "_cal_count_label") and counter is not None:
+            self._cal_count_label.configure(text=str(int(counter)))
         if hasattr(self, "_cal_load_status"):
             self._cal_load_status.configure(text="Loaded from sensor.", foreground="#44cc88")
 
@@ -486,11 +500,11 @@ class CalibrationMixin:
                     self._cal_data[r, c, 1] = 0    # dark
         # Reset setpoints to firmware defaults
         self._cal_setpoint_1 = 1000
-        self._cal_setpoint_2 = 1200
+        self._cal_setpoint_2 = 0
         if hasattr(self, "_cal_sp1_label"):
             self._cal_sp1_label.configure(text="1000")
         if hasattr(self, "_cal_sp2_label"):
-            self._cal_sp2_label.configure(text="1200")
+            self._cal_sp2_label.configure(text="0")
         if hasattr(self, "_cal_load_status"):
             self._cal_load_status.configure(text="Reset to defaults.", foreground="gray")
         self._refresh_cal_raster()
@@ -562,6 +576,7 @@ class CalibrationMixin:
 
         form = tkk.LabelFrame(root, text=" Settings ")
         form.pack(fill="x", padx=12, pady=4)
+        self._cal_page1_settings_frame = form  # stored so cover toggle can hide it
 
         self._cal_opt_target_dark = OptionEntry(
             form, "Target dark value  (µW/mm²):",
@@ -582,6 +597,11 @@ class CalibrationMixin:
 
         cover_lf = tkk.LabelFrame(root, text=" Cover-sensor shortcut ")
         cover_lf.pack(fill="x", padx=12, pady=4)
+        self._cal_page1_cover_frame = cover_lf  # stored for pack ordering
+
+        # If cover shortcut is already active when page is rendered, hide the settings form
+        if self._cal_dark_cover_val:
+            form.pack_forget()
         tkk.Label(
             cover_lf,
             text=(
@@ -617,11 +637,19 @@ class CalibrationMixin:
         self._cal_page1_next_btn.pack(side="right", padx=4)
 
     def _on_dark_cover_toggle(self, enabled: bool) -> None:
-        """Update the next button text when cover shortcut toggle changes."""
+        """Update the next button text and hide/show settings when cover shortcut toggles."""
         setattr(self, "_cal_dark_cover_val", enabled)
         if hasattr(self, '_cal_page1_next_btn'):
-            new_label = "Calibrate Dark" if enabled else "Next"
-            self._cal_page1_next_btn.configure(text=new_label)
+            self._cal_page1_next_btn.configure(text="Calibrate Dark" if enabled else "Next")
+        if hasattr(self, '_cal_page1_settings_frame'):
+            if enabled:
+                self._cal_page1_settings_frame.pack_forget()
+            elif hasattr(self, '_cal_page1_cover_frame'):
+                # Re-insert before the cover frame to preserve original order
+                self._cal_page1_settings_frame.pack(
+                    fill="x", padx=12, pady=4,
+                    before=self._cal_page1_cover_frame,
+                )
 
     # ─────────────────────────────────────────────────────────────────────────
     #  PAGE 2 — Dark measurement
