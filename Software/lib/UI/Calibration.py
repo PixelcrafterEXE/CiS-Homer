@@ -205,7 +205,7 @@ class CalibrationMixin:
             return
         
         self._show_calibration_main()
-        self._load_calibration_from_sensor()
+        self._apply_calibration_from_cache()
 
         # Reload whenever the user switches to the Calibration tab
         def _on_tab_changed(_event: object) -> None:
@@ -213,7 +213,7 @@ class CalibrationMixin:
                 if self._tabview.index("current") == self._tabview.index(self._frame_calibration):
                     # Only reload if we're on the main calibration page (not inside a wizard)
                     if getattr(self, "_cal_wizard_page", None) is None:
-                        self._load_calibration_from_sensor()
+                        self._apply_calibration_from_cache()
             except Exception:
                 pass
 
@@ -324,10 +324,8 @@ class CalibrationMixin:
         ).pack(padx=12, pady=(12, 6))
 
         # ── Manual entry ───────────────────────────────────────────────────
-        t_bright_opt = getattr(self, "_cal_opt_target_bright", None)
-        t_dark_opt   = getattr(self, "_cal_opt_target_dark",   None)
-        tb_str = t_bright_opt.value.get() if t_bright_opt else "?"
-        td_str = t_dark_opt.value.get()   if t_dark_opt   else "?"
+        tb_str = str(getattr(self, "_cal_setpoint_1", "?"))
+        td_str = str(getattr(self, "_cal_setpoint_2", "?"))
 
         manual_lf = tkk.LabelFrame(root, text=" Manual Entry ")
         manual_lf.pack(fill="x", padx=12, pady=4)
@@ -490,6 +488,32 @@ class CalibrationMixin:
         if hasattr(self, "_cal_load_status"):
             self._cal_load_status.configure(text=f"Load failed: {msg}", foreground="red")
         self._show_error(f"Calibration load failed: {msg}")
+
+    def _apply_calibration_from_cache(self) -> None:
+        """Update calibration UI from sensor._calibration_cache with no serial I/O.
+        Falls back to a full serial load if the cache is not yet populated."""
+        cal = getattr(self._sensor, '_calibration_cache', None) if self._sensor else None
+        if cal is None:
+            # Cache not ready yet (very first connect before readCalibration finished) — do serial read
+            self._load_calibration_from_sensor()
+            return
+        new_data = np.full((9, 9, 2), np.nan)
+        for ch_idx, sensor_idx in enumerate(_VALID_CHANNEL_INDICES):
+            pos = _SENSOR_POSITIONS[sensor_idx]
+            if pos is None:
+                continue
+            px, py = pos
+            row, col = py + 4, px + 4
+            new_data[row, col, 0] = float(cal["channel_values"][ch_idx, 0])
+            new_data[row, col, 1] = float(cal["channel_values"][ch_idx, 1])
+        self._apply_loaded_calibration(
+            new_data,
+            int(cal["setpoint_1"]),
+            int(cal["setpoint_2"]),
+            int(cal.get("counter", 0)),
+        )
+        if hasattr(self, "_cal_load_status"):
+            self._cal_load_status.configure(text="Loaded from cache.", foreground="gray")
 
     def _reset_calibration(self) -> None:
         # Reset channel data: dark=0, bright=500

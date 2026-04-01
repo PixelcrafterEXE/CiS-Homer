@@ -183,12 +183,16 @@ class Sensor:
                             pass
 
                         self.firmware_version = version  # set before self.ser to avoid FW-version race
-                        self.ser = ser
-                        print(f"Connected to sensor on {device} (firmware {version})")
-                        try:
-                            self.readCalibration()  # warms _calibration_cache
-                        except Exception as _cache_err:
-                            print(f"Could not pre-load calibration cache: {_cache_err}")
+                        with self._serial_lock:
+                            # Hold the lock while making the port visible AND reading calibration,
+                            # so no measurement thread can acquire the lock (and thus touch the port)
+                            # until the cache is fully populated.
+                            self.ser = ser
+                            print(f"Connected to sensor on {device} (firmware {version})")
+                            try:
+                                self.readCalibration()  # re-entrant (RLock); cache populated atomically
+                            except Exception as _cache_err:
+                                print(f"Could not pre-load calibration cache: {_cache_err}")
                         break
                     else:
                         ser.close()
