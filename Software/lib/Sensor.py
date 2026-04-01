@@ -91,6 +91,9 @@ class Sensor:
         self.device_id = device_id
         
         self.ser = None
+        self.firmware_version: str = ""  # set on connect, cleared on disconnect
+        self._serial_lock = threading.RLock()  # serialise all serial I/O; RLock allows re-entry from same thread
+        self._calibration_cache: dict | None = None  # populated on connect and by readCalibration()
 
         self._running = True
         self._timer = None
@@ -101,6 +104,8 @@ class Sensor:
             if self.ser.is_open:
                 self.ser.close()
             self.ser = None
+        self._calibration_cache = None
+        self.firmware_version = ""
 
     def setBaud(self, baud: int) -> None:
         print(f"Setting baud rate to {baud}...")
@@ -162,8 +167,28 @@ class Sensor:
                                 break
                     version = response.split(b"\r")[0].decode("ascii", errors="replace").strip()
                     if version.startswith("V"):
+                        # Stop any stream the firmware was left in from a previous
+                        # connection BEFORE advertising the port to the rest of the
+                        # application.  If we set self.ser first, the UI thread sees
+                        # sensor_active=True and immediately fires readCalibration()
+                        # while the firmware is still streaming — the 257 bytes we
+                        # read are then a mix of ASCII stream data and the actual
+                        # calibration payload, producing corrupt values.
+                        try:
+                            ser.write(b'x')
+                            ser.flush()
+                            time.sleep(0.15)       # let the firmware finish the current frame
+                            ser.reset_input_buffer()  # discard any buffered stream bytes
+                        except OSError:
+                            pass
+
+                        self.firmware_version = version  # set before self.ser to avoid FW-version race
                         self.ser = ser
                         print(f"Connected to sensor on {device} (firmware {version})")
+                        try:
+                            self.readCalibration()  # warms _calibration_cache
+                        except Exception as _cache_err:
+                            print(f"Could not pre-load calibration cache: {_cache_err}")
                         break
                     else:
                         ser.close()
@@ -184,61 +209,98 @@ class Sensor:
         if ser is None or not ser.is_open:
             raise RuntimeError("Serial connection is not open.")
 
-        ser.reset_input_buffer()
-        #print(f"[SERIAL OUT] write: {command!r}")
-        ser.write(command)
-        ser.flush()
-
-        # UPDATED REGEX: Added -? to allow for negative values
-        pattern = re.compile(r"(\d+)\s*:\s*(-?\d+)")
-        values = {}
-        remainder = ""
-
-        try:
-            deadline = time.monotonic() + 5.0
-            while len(values) < 64 and time.monotonic() < deadline:
-                chunk = ser.read(ser.in_waiting or 1)
-                if not chunk:
-                    continue
-
-#                print(f"[SERIAL IN] read: {chunk!r}")
-                text = remainder + chunk.decode("ascii", errors="ignore")
-                parts = re.split(r"[\r\n]+", text)
-                remainder = parts.pop() if parts else ""
-
-                for token in parts:
-                    for m in pattern.finditer(token):
-                        idx = int(m.group(1))
-                        val = int(m.group(2))
-                        if 1 <= idx <= 64:
-                            values[idx] = val
-
-            for m in pattern.finditer(remainder):
-                idx = int(m.group(1))
-                val = int(m.group(2))
-                if 1 <= idx <= 64:
-                    values[idx] = val
-
-            #print(f"[SERIAL OUT] write: {b'x\r'!r}")
-            ser.write(b"x")
+        with self._serial_lock:
+            ser.reset_input_buffer()
+            #print(f"[SERIAL OUT] write: {command!r}")
+            ser.write(command)
             ser.flush()
 
-            if len(values) != 64:
-                missing = [i for i in range(1, 65) if i not in values]
-                raise ValueError(f"Incomplete sensor frame, missing channels: {missing}")
+            # UPDATED REGEX: Added -? to allow for negative values
+            pattern = re.compile(r"(\d+)\s*:\s*(-?\d+)")
+            values = {}
+            remainder = ""
 
-            # UPDATED DTYPE: Changed to int32 to safely store negative offsets
-            return np.array([values[i] for i in range(1, 65)], dtype=np.int32)
-        except Exception as e:
-            raise RuntimeError(f"Failed to read sensor data: {e}") 
+            try:
+                deadline = time.monotonic() + 5.0
+                while len(values) < 64 and time.monotonic() < deadline:
+                    chunk = ser.read(ser.in_waiting or 1)
+                    if not chunk:
+                        continue
+
+#                    print(f"[SERIAL IN] read: {chunk!r}")
+                    text = remainder + chunk.decode("ascii", errors="ignore")
+                    parts = re.split(r"[\r\n]+", text)
+                    remainder = parts.pop() if parts else ""
+
+                    for token in parts:
+                        for m in pattern.finditer(token):
+                            idx = int(m.group(1))
+                            val = int(m.group(2))
+                            if 1 <= idx <= 64:
+                                values[idx] = val
+
+                for m in pattern.finditer(remainder):
+                    idx = int(m.group(1))
+                    val = int(m.group(2))
+                    if 1 <= idx <= 64:
+                        values[idx] = val
+
+                #print(f"[SERIAL OUT] write: {b'x\r'!r}")
+                ser.write(b"x")
+                ser.flush()
+
+                if len(values) != 64:
+                    missing = [i for i in range(1, 65) if i not in values]
+                    raise ValueError(f"Incomplete sensor frame, missing channels: {missing}")
+
+                # UPDATED DTYPE: Changed to int32 to safely store negative offsets
+                return np.array([values[i] for i in range(1, 65)], dtype=np.int32)
+            except Exception as e:
+                raise RuntimeError(f"Failed to read sensor data: {e}") 
    
     def getRaw(self) -> np.ndarray:
         '''ADC Rohwerte auslesen für alle FD Kanäle (r)'''
         return self._read_64_channels(b"r")
 
     def getCalibrated(self) -> np.ndarray:
-        '''ADC Rohwerte mit Kalibrierwerten aus eeprom verrechnet'''
-        raise NotImplementedError("getCalibrated is not implemented yet. Calibration handling needs to be defined first.")
+        '''Irradiance in µW/mm² for each sensor channel, linearly interpolated from EEPROM calibration.
+
+        Maps each channel's raw ADC reading to irradiance (µW/mm²) using the per-channel
+        bright and dark ADC reference points and the two global setpoints:
+          setpoint_1 = bright reference irradiance (µW/mm²)
+          setpoint_2 = dark reference irradiance (µW/mm²)
+
+        Formula per channel:
+          t         = (raw - dark_adc) / (bright_adc - dark_adc)
+          irradiance = setpoint_2 + t * (setpoint_1 - setpoint_2)
+
+        Channels without calibration data (NTC: 8, 33; Reference Diode: 52) retain their
+        raw ADC value so that getMap's unmapped-channel handling continues to work correctly.
+        Pixels where bright_adc == dark_adc (no calibration stored) are set to NaN.
+        '''
+        raw = self.getRaw()          # shape (64,), dtype int32
+        cal = self._calibration_cache
+        if cal is None:
+            cal = self.readCalibration()  # populates _calibration_cache as a side-effect
+
+        sp1 = float(cal["setpoint_1"])  # bright irradiance reference (µW/mm²)
+        sp2 = float(cal["setpoint_2"])  # dark  irradiance reference (µW/mm²)
+
+        # Default: keep raw value (covers NTC / reference-diode channels that are
+        # not in valid_channel_indices; getMap needs int(raw[i]) for those).
+        result = raw.astype(float)
+
+        for ch_idx, sensor_idx in enumerate(valid_channel_indices):
+            bright_adc = float(cal["channel_values"][ch_idx, 0])
+            dark_adc   = float(cal["channel_values"][ch_idx, 1])
+            denom = bright_adc - dark_adc
+            if denom == 0.0:
+                result[sensor_idx] = np.nan   # uncalibrated pixel
+                continue
+            t = (float(raw[sensor_idx]) - dark_adc) / denom
+            result[sensor_idx] = sp2 + t * (sp1 - sp2)
+
+        return result
 
     def readCalibration(self) -> dict:
         '''Liest allgemeine Kalibrierinfos und Kalibrierkanalwerte aus dem EEPROM.
@@ -270,52 +332,55 @@ class Sensor:
         if ser is None or not ser.is_open:
             raise RuntimeError("Serial connection is not open.")
 
-        max_attempts = 3
-        for attempt in range(1, max_attempts + 1):
-            ser.reset_input_buffer()
-            ser.write(b'k')
-            ser.flush()
+        with self._serial_lock:
+            max_attempts = 3
+            for attempt in range(1, max_attempts + 1):
+                ser.reset_input_buffer()
+                ser.write(b'k')
+                ser.flush()
 
-            data = b''
-            deadline = time.monotonic() + 5.0
-            while len(data) < 257 and time.monotonic() < deadline:
-                chunk = ser.read(257 - len(data))
-                if chunk:
-                    data += chunk
+                data = b''
+                deadline = time.monotonic() + 5.0
+                while len(data) < 257 and time.monotonic() < deadline:
+                    chunk = ser.read(257 - len(data))
+                    if chunk:
+                        data += chunk
 
-            if len(data) >= 257:
-                break
+                if len(data) >= 257:
+                    break
 
-            if attempt < max_attempts:
-                print(f"Calibration read attempt {attempt} incomplete "
-                      f"({len(data)}/257 bytes), retrying...")
-                time.sleep(0.2)
+                if attempt < max_attempts:
+                    print(f"Calibration read attempt {attempt} incomplete "
+                          f"({len(data)}/257 bytes), retrying...")
+                    time.sleep(0.2)
 
-        if len(data) < 257:
-            raise RuntimeError(
-                f"Incomplete calibration read: received {len(data)}/257 bytes "
-                f"after {max_attempts} attempts."
-            )
+            if len(data) < 257:
+                raise RuntimeError(
+                    f"Incomplete calibration read: received {len(data)}/257 bytes "
+                    f"after {max_attempts} attempts."
+                )
 
-        channel_values = np.zeros((61, 2), dtype=np.uint16)
-        for ch in range(61):
-            base = 13 + ch * 4
-            channel_values[ch, 0] = int.from_bytes(data[base:base + 2],     "big")
-            channel_values[ch, 1] = int.from_bytes(data[base + 2:base + 4], "big")
+            channel_values = np.zeros((61, 2), dtype=np.uint16)
+            for ch in range(61):
+                base = 13 + ch * 4
+                channel_values[ch, 0] = int.from_bytes(data[base:base + 2],     "big")
+                channel_values[ch, 1] = int.from_bytes(data[base + 2:base + 4], "big")
 
-        return {
-            "counter":        data[0],
-            "day":            data[1],
-            "month":          data[2],
-            "year":           data[3],
-            "hour":           data[4],
-            "minute":         data[5],
-            "second":         data[6],
-            "gain":           int.from_bytes(data[7:9],   "little"),
-            "setpoint_1":     int.from_bytes(data[9:11],  "little"),
-            "setpoint_2":     int.from_bytes(data[11:13], "little"),
-            "channel_values": channel_values,
-        }
+            result = {
+                "counter":        data[0],
+                "day":            data[1],
+                "month":          data[2],
+                "year":           data[3],
+                "hour":           data[4],
+                "minute":         data[5],
+                "second":         data[6],
+                "gain":           int.from_bytes(data[7:9],   "little"),
+                "setpoint_1":     int.from_bytes(data[9:11],  "little"),
+                "setpoint_2":     int.from_bytes(data[11:13], "little"),
+                "channel_values": channel_values,
+            }
+            self._calibration_cache = result
+            return result
     
     
     def writeCalibration(self,
@@ -358,9 +423,9 @@ class Sensor:
         if ser is None or not ser.is_open:
             raise RuntimeError("Serial connection is not open.")
 
-        # Fill missing data fields from EEPROM in a single read.
+        # Fill missing data fields — prefer the in-memory cache to avoid an extra serial round trip.
         if any(v is None for v in (gain, setpoint_1, setpoint_2, channel_values)):
-            existing = self.readCalibration()
+            existing = self._calibration_cache or self.readCalibration()
             if gain           is None: gain           = existing["gain"]
             if setpoint_1     is None: setpoint_1     = existing["setpoint_1"]
             if setpoint_2     is None: setpoint_2     = existing["setpoint_2"]
@@ -396,33 +461,44 @@ class Sensor:
             payload[base:base + 2]     = int(channel_values[ch, 0]).to_bytes(2, "big")
             payload[base + 2:base + 4] = int(channel_values[ch, 1]).to_bytes(2, "big")
 
-        # Step 1: send command, wait for 'c\r' ACK before transmitting payload
-        ser.reset_input_buffer()
-        ser.write(b'a')
-        ser.flush()
+        with self._serial_lock:
+            # Step 1: send command, wait for 'c\r' ACK before transmitting payload
+            ser.reset_input_buffer()
+            ser.write(b'a')
+            ser.flush()
 
-        ack = b''
-        deadline = time.monotonic() + 2.0
-        while b'\r' not in ack and time.monotonic() < deadline:
-            chunk = ser.read(ser.in_waiting or 1)
-            if chunk:
-                ack += chunk
-        if b'c' not in ack:
-            raise RuntimeError(f"No 'c\\r' ACK from firmware for 'a' command, got: {ack!r}")
+            ack = b''
+            deadline = time.monotonic() + 2.0
+            while b'\r' not in ack and time.monotonic() < deadline:
+                chunk = ser.read(ser.in_waiting or 1)
+                if chunk:
+                    ack += chunk
+            if b'c' not in ack:
+                raise RuntimeError(f"No 'c\\r' ACK from firmware for 'a' command, got: {ack!r}")
 
-        # Step 2: send the 256-byte payload
-        ser.write(bytes(payload))
-        ser.flush()
+            # Step 2: send the 256-byte payload
+            ser.write(bytes(payload))
+            ser.flush()
 
-        # Step 3: wait for 's\r' done response from SetEEPROM
-        resp = b''
-        deadline = time.monotonic() + 5.0
-        while b'\r' not in resp and time.monotonic() < deadline:
-            chunk = ser.read(ser.in_waiting or 1)
-            if chunk:
-                resp += chunk
-        if b's' not in resp:
-            print(f"Warning: no 's\\r' completion from firmware after 'a' command, got: {resp!r}")
+            # Step 3: wait for 's\r' done response from SetEEPROM
+            resp = b''
+            deadline = time.monotonic() + 5.0
+            while b'\r' not in resp and time.monotonic() < deadline:
+                chunk = ser.read(ser.in_waiting or 1)
+                if chunk:
+                    resp += chunk
+            if b's' not in resp:
+                print(f"Warning: no 's\\r' completion from firmware after 'a' command, got: {resp!r}")
+
+        # Update in-memory cache to reflect what was just written to EEPROM.
+        # Use .copy() so later mutations to the caller's array cannot corrupt the cache.
+        self._calibration_cache = {
+            **(self._calibration_cache or {}),
+            "gain": gain, "setpoint_1": setpoint_1, "setpoint_2": setpoint_2,
+            "channel_values": channel_values.copy(),
+            "day": day, "month": month, "year": year,
+            "hour": hour, "minute": minute, "second": second,
+        }
 
     def getCalibrationArray(self) -> np.ndarray:
         '''Gibt Kalibrierwerte als (2, 64) Array zurück.
@@ -490,20 +566,21 @@ class Sensor:
         if ser is None or not ser.is_open:
             raise RuntimeError("Serial connection is not open.")
 
-        ser.reset_input_buffer()
-        ser.write(b'v')
-        ser.flush()
+        with self._serial_lock:
+            ser.reset_input_buffer()
+            ser.write(b'v')
+            ser.flush()
 
-        response = b''
-        deadline = time.monotonic() + 2.0
-        while time.monotonic() < deadline:
-            chunk = ser.read(ser.in_waiting or 1)
-            if chunk:
-                response += chunk
-                if b'\r' in response:
-                    break
+            response = b''
+            deadline = time.monotonic() + 2.0
+            while time.monotonic() < deadline:
+                chunk = ser.read(ser.in_waiting or 1)
+                if chunk:
+                    response += chunk
+                    if b'\r' in response:
+                        break
 
-        return response.split(b'\r')[0].decode('ascii', errors='replace').strip()
+            return response.split(b'\r')[0].decode('ascii', errors='replace').strip()
 
     def getGain(self) -> int:
         '''liest den Verstärkungsfaktor der Hardware aus EEPROM aus.'''
@@ -534,12 +611,10 @@ class Sensor:
             source = data_source.strip().lower()
             if source == "raw":
                 raw = self.getRaw()
-            elif source == "calibrated":
+            elif source == "calibrated" or source.startswith("irradiance"):
                 raw = self.getCalibrated()
-            elif source == "offset":
-                raw = self.getOffset()
             else:
-                raise ValueError(f"Unknown data_source '{data_source}'. Expected one of: raw, calibrated, offset")
+                raise ValueError(f"Unknown data_source '{data_source}'. Expected one of: raw, irradiance, offset")
 
         array = np.full((9, 9), np.nan)
         unmapped: dict[int, int] = {}
