@@ -183,12 +183,16 @@ class Sensor:
                             pass
 
                         self.firmware_version = version  # set before self.ser to avoid FW-version race
-                        self.ser = ser
-                        print(f"Connected to sensor on {device} (firmware {version})")
-                        try:
-                            self.readCalibration()  # warms _calibration_cache
-                        except Exception as _cache_err:
-                            print(f"Could not pre-load calibration cache: {_cache_err}")
+                        with self._serial_lock:
+                            # Hold the lock while making the port visible AND reading calibration,
+                            # so no measurement thread can acquire the lock (and thus touch the port)
+                            # until the cache is fully populated.
+                            self.ser = ser
+                            print(f"Connected to sensor on {device} (firmware {version})")
+                            try:
+                                self.readCalibration()  # re-entrant (RLock); cache populated atomically
+                            except Exception as _cache_err:
+                                print(f"Could not pre-load calibration cache: {_cache_err}")
                         break
                     else:
                         ser.close()
@@ -542,8 +546,12 @@ class Sensor:
             year += 2000
         dt = datetime.datetime(year, cal["month"], cal["day"],
                                cal["hour"], cal["minute"], cal["second"])
-        subprocess.run( #needs permissions; todo: configure OS to allow
-            ["date", "-s", dt.strftime("%Y-%m-%d %H:%M:%S")],
+        # timedatectl set-time goes through polkit (see Firmware/stage-homer
+        # 01-setup-homer/01-run.sh rule 10-timedate.rules) — no sudo needed.
+        # NTP must be disabled before allowing a manual time set.
+        subprocess.run(["timedatectl", "set-ntp", "false"], check=True)
+        subprocess.run(
+            ["timedatectl", "set-time", dt.strftime("%Y-%m-%d %H:%M:%S")],
             check=True,
         )
         return dt

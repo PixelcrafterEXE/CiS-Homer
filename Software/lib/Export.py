@@ -52,70 +52,89 @@ threading.Thread(target=_usb_check_loop, daemon=True).start()
 def is_usb_available() -> bool:
     return _usb_available
 
-def export_data(sensor: Sensor) -> None:
-    #todo: export calibrated, uW/mm² as seperate columns. Add second table with timestamp, sensor settings, temperatures, ref-diode, hwid...
+def export_data(sensor: Sensor, on_success=None, on_error=None) -> None:
+    """Export a CSV measurement to the USB drive.
+
+    Returns immediately; the actual I/O runs on a daemon thread.
+    *on_success()* is called (from that thread) when the file is written.
+    *on_error(msg: str)* is called on any failure.  Both are optional.
+    """
     if not _target_part:
+        if on_error:
+            on_error("No USB storage detected.")
         return
-        
-    try:
-        # Check if it is already mounted
-        out = subprocess.check_output(['lsblk', '-o', 'MOUNTPOINT', '-n', _target_part], text=True).strip()
-        already_mounted = bool(out)
-        mount_point = out
-        
-        if not already_mounted:
-            # Mount using udisksctl (handles permissions securely)
-            try:
-                mount_out = subprocess.check_output(['udisksctl', 'mount', '-b', _target_part], text=True, stderr=subprocess.STDOUT)
-                # Extract mount point from output: "Mounted /dev/sdX1 at /media/user/DRIVE."
-                if " at " in mount_out:
-                    mount_point = mount_out.split(" at ")[1].strip().rstrip('.')
-                else:
-                    # Fallback: check lsblk
-                    mount_point = subprocess.check_output(['lsblk', '-o', 'MOUNTPOINT', '-n', _target_part], text=True).strip()
-            except subprocess.CalledProcessError as e:
-                print(f"Error mounting: {e.output}")
+
+    def _run() -> None:
+        try:
+            # ── Mount ────────────────────────────────────────────────────────
+            out = subprocess.check_output(
+                ['lsblk', '-o', 'MOUNTPOINT', '-n', _target_part], text=True
+            ).strip()
+            already_mounted = bool(out)
+            mount_point = out
+
+            if not already_mounted:
+                try:
+                    mount_out = subprocess.check_output(
+                        ['udisksctl', 'mount', '-b', _target_part],
+                        text=True, stderr=subprocess.STDOUT,
+                    )
+                    if " at " in mount_out:
+                        mount_point = mount_out.split(" at ")[1].strip().rstrip('.')
+                    else:
+                        mount_point = subprocess.check_output(
+                            ['lsblk', '-o', 'MOUNTPOINT', '-n', _target_part], text=True
+                        ).strip()
+                except subprocess.CalledProcessError as e:
+                    if on_error:
+                        on_error(f"USB mount failed: {e.output.strip()}")
+                    return
+
+            if not mount_point:
+                if on_error:
+                    on_error("Could not determine USB mount point.")
                 return
-            
-        if not mount_point:
-            print("Could not determine mount point.")
-            return
 
-        # Fetch the most recent measurement
-        try:
-            raw_data = sensor.getRaw()
+            # ── Read sensor ──────────────────────────────────────────────────
+            try:
+                raw_data = sensor.getRaw()
+            except Exception as e:
+                if on_error:
+                    on_error(f"Sensor read failed: {e}")
+                return
+
+            try:
+                cal_data = sensor.getCalibrated()
+            except Exception:
+                cal_data = None   # non-fatal; export raw only
+
+            # ── Write CSV ────────────────────────────────────────────────────
+            filename = datetime.datetime.now().strftime("Measurement_%Y%m%d_%H%M%S.csv")
+            filepath = os.path.join(mount_point, filename)
+
+            with open(filepath, 'w', newline='') as f:
+                writer = csv.writer(f)
+                if cal_data is not None:
+                    writer.writerow(["Channel", "Raw_ADC", "Irradiance_uW_per_mm2"])
+                    for i, raw_val in enumerate(raw_data):
+                        cal_val = cal_data[i]
+                        irr_str = f"{cal_val:.4f}" if not np.isnan(cal_val) else ""
+                        writer.writerow([i + 1, int(raw_val), irr_str])
+                else:
+                    writer.writerow(["Channel", "Raw_ADC"])
+                    for i, raw_val in enumerate(raw_data):
+                        writer.writerow([i + 1, int(raw_val)])
+
+            # ── Unmount (only if we mounted) ─────────────────────────────────
+            if not already_mounted:
+                time.sleep(1)
+                subprocess.run(['udisksctl', 'unmount', '-b', _target_part])
+
+            if on_success:
+                on_success()
+
         except Exception as e:
-            print(f"Error reading from sensor: {e}")
-            return
+            if on_error:
+                on_error(f"Export failed: {e}")
 
-        try:
-            cal_data = sensor.getCalibrated()
-        except Exception as e:
-            print(f"Could not read calibrated data, exporting raw only: {e}")
-            cal_data = None
-
-        # Save to CSV
-        filename = datetime.datetime.now().strftime("Measurement_%Y%m%d_%H%M%S.csv")
-        filepath = os.path.join(mount_point, filename)
-
-        with open(filepath, 'w', newline='') as f:
-            writer = csv.writer(f)
-            if cal_data is not None:
-                writer.writerow(["Channel", "Raw_ADC", "Irradiance_uW_per_mm2"])
-                for i, raw_val in enumerate(raw_data):
-                    cal_val = cal_data[i]
-                    irr_str = f"{cal_val:.4f}" if not np.isnan(cal_val) else ""
-                    writer.writerow([i + 1, int(raw_val), irr_str])
-            else:
-                writer.writerow(["Channel", "Raw_ADC"])
-                for i, raw_val in enumerate(raw_data):
-                    writer.writerow([i + 1, int(raw_val)])
-                
-        # Only unmount if we mounted it in this session. If the system already mounted it before, don't unmount it
-        if not already_mounted:
-            # Some OS-level automounters or our tight loop might hold locks. Wait briefly.
-            time.sleep(1)
-            subprocess.run(['udisksctl', 'unmount', '-b', _target_part])
-        
-    except Exception as e:
-        print(f"Export failed: {e}")
+    threading.Thread(target=_run, daemon=True).start()
