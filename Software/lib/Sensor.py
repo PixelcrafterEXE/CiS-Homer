@@ -256,7 +256,7 @@ class Sensor:
           [7:9]    Gain (uint16 LE, kΩ)
           [9:11]   Sollwert Kalibrator 1 (uint16 LE, µW/mm²)
           [11:13]  Sollwert Kalibrator 2 (uint16 LE, µW/mm²)
-          [13:257] 61 Kanäle × 4 Byte: je 2 Byte cal1 (LE uint16), 2 Byte cal2 (LE uint16)
+          [13:257] 61 Kanäle × 4 Byte: je 2 Byte cal1 (BE uint16), 2 Byte cal2 (BE uint16)
 
         Gibt ein Dict zurück:
           counter, day, month, year, hour, minute, second,
@@ -270,27 +270,38 @@ class Sensor:
         if ser is None or not ser.is_open:
             raise RuntimeError("Serial connection is not open.")
 
-        ser.reset_input_buffer()
-        ser.write(b'k')
-        ser.flush()
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            ser.reset_input_buffer()
+            ser.write(b'k')
+            ser.flush()
 
-        data = b''
-        deadline = time.monotonic() + 5.0
-        while len(data) < 257 and time.monotonic() < deadline:
-            chunk = ser.read(257 - len(data))
-            if chunk:
-                data += chunk
+            data = b''
+            deadline = time.monotonic() + 5.0
+            while len(data) < 257 and time.monotonic() < deadline:
+                chunk = ser.read(257 - len(data))
+                if chunk:
+                    data += chunk
+
+            if len(data) >= 257:
+                break
+
+            if attempt < max_attempts:
+                print(f"Calibration read attempt {attempt} incomplete "
+                      f"({len(data)}/257 bytes), retrying...")
+                time.sleep(0.2)
 
         if len(data) < 257:
             raise RuntimeError(
-                f"Incomplete calibration read: received {len(data)}/257 bytes."
+                f"Incomplete calibration read: received {len(data)}/257 bytes "
+                f"after {max_attempts} attempts."
             )
 
         channel_values = np.zeros((61, 2), dtype=np.uint16)
         for ch in range(61):
             base = 13 + ch * 4
-            channel_values[ch, 0] = int.from_bytes(data[base:base + 2],     "little")
-            channel_values[ch, 1] = int.from_bytes(data[base + 2:base + 4], "little")
+            channel_values[ch, 0] = int.from_bytes(data[base:base + 2],     "big")
+            channel_values[ch, 1] = int.from_bytes(data[base + 2:base + 4], "big")
 
         return {
             "counter":        data[0],
@@ -324,6 +335,12 @@ class Sensor:
           Datum/Uhrzeit → aktuelle Systemzeit
           gain, setpoint_1, setpoint_2, channel_values → einmalig per 'k' aus dem EEPROM gelesen
 
+        Protokoll:
+          1. Python sendet 'a'
+          2. Firmware antwortet mit 'c\r' (ACK, bereit zum Empfang)
+          3. Python sendet 256-Byte-Payload
+          4. Firmware schreibt EEPROM, antwortet mit 's\r' (done)
+
         Byte-Layout des 256-Byte-Payloads (0-indiziert):
           [0]      Tag
           [1]      Monat
@@ -331,10 +348,11 @@ class Sensor:
           [3]      Stunde
           [4]      Minute
           [5]      Sekunde
-          [6:8]    Gain (uint16 LE, kΩ)
-          [8:10]   Sollwert Kalibrator 1 (uint16 LE, µW/mm²)
-          [10:12]  Sollwert Kalibrator 2 (uint16 LE, µW/mm²)
-          [12:256] 61 Kanäle × 4 Byte: je 2 Byte cal1 (LE uint16), 2 Byte cal2 (LE uint16)
+          [6:8]    Gain (uint16 BE, kΩ)            ← Firmware: Rx[6]<<8 | Rx[7]
+          [8:10]   Sollwert Kalibrator 1 (uint16 BE, µW/mm²)
+          [10:12]  Sollwert Kalibrator 2 (uint16 BE, µW/mm²)
+          [12:256] 61 Kanäle × 4 Byte: je 2 Byte cal1 (BE uint16), 2 Byte cal2 (BE uint16)
+                   ← Firmware: KalibWerte[i] = Rx[12+4i]<<24|Rx[13+4i]<<16|Rx[14+4i]<<8|Rx[15+4i]
         '''
         ser = self.ser
         if ser is None or not ser.is_open:
@@ -369,18 +387,42 @@ class Sensor:
         payload[3] = int(hour)   & 0xFF
         payload[4] = int(minute) & 0xFF
         payload[5] = int(second) & 0xFF
-        payload[6:8]   = int(gain).to_bytes(2,       "little")
-        payload[8:10]  = int(setpoint_1).to_bytes(2, "little")
-        payload[10:12] = int(setpoint_2).to_bytes(2, "little")
+        payload[6:8]   = int(gain).to_bytes(2,       "big")  # firmware: Rx[6]<<8 | Rx[7]
+        payload[8:10]  = int(setpoint_1).to_bytes(2, "big")
+        payload[10:12] = int(setpoint_2).to_bytes(2, "big")
 
         for ch in range(61):
             base = 12 + ch * 4
-            payload[base:base + 2]     = int(channel_values[ch, 0]).to_bytes(2, "little")
-            payload[base + 2:base + 4] = int(channel_values[ch, 1]).to_bytes(2, "little")
+            payload[base:base + 2]     = int(channel_values[ch, 0]).to_bytes(2, "big")
+            payload[base + 2:base + 4] = int(channel_values[ch, 1]).to_bytes(2, "big")
 
+        # Step 1: send command, wait for 'c\r' ACK before transmitting payload
         ser.reset_input_buffer()
-        ser.write(b'a' + bytes(payload))
+        ser.write(b'a')
         ser.flush()
+
+        ack = b''
+        deadline = time.monotonic() + 2.0
+        while b'\r' not in ack and time.monotonic() < deadline:
+            chunk = ser.read(ser.in_waiting or 1)
+            if chunk:
+                ack += chunk
+        if b'c' not in ack:
+            raise RuntimeError(f"No 'c\\r' ACK from firmware for 'a' command, got: {ack!r}")
+
+        # Step 2: send the 256-byte payload
+        ser.write(bytes(payload))
+        ser.flush()
+
+        # Step 3: wait for 's\r' done response from SetEEPROM
+        resp = b''
+        deadline = time.monotonic() + 5.0
+        while b'\r' not in resp and time.monotonic() < deadline:
+            chunk = ser.read(ser.in_waiting or 1)
+            if chunk:
+                resp += chunk
+        if b's' not in resp:
+            print(f"Warning: no 's\\r' completion from firmware after 'a' command, got: {resp!r}")
 
     def getCalibrationArray(self) -> np.ndarray:
         '''Gibt Kalibrierwerte als (2, 64) Array zurück.
