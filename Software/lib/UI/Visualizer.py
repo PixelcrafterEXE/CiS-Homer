@@ -78,7 +78,7 @@ class VisualizerMixin:
         ), col_meas)
 
         self._data_source_dropdown = OptionDropdown(
-            col_meas, "Data source", ["raw", "calibrated", "Irradiance (in μW/mm²)"], "raw",
+            col_meas, "Data source", ["raw", "Irradiance (in μW/mm²)"], "raw",
             command=lambda _v: self._update_measurement(), persistent=True,
         )
         self._add_option(self._data_source_dropdown, col_meas)
@@ -164,6 +164,8 @@ class VisualizerMixin:
         under_color = scheme.get("under", 'black') if use_clip else color_list[0]
         over_color = scheme.get("over", 'white') if use_clip else color_list[-1]
 
+        fw_version = self._sensor.firmware_version if self._sensor else ""
+
         self._raster_fig = RasterFigure(
             np.full((9, 9), np.nan),
             rangeMode=range_mode,
@@ -178,6 +180,7 @@ class VisualizerMixin:
             manualLo=getCFGKey("manual_range_lo"),
             manualHi=getCFGKey("manual_range_hi"),
             onManualRangeChange=self._store_manual_range,
+            firmware_version=fw_version,
         )
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._plot_container)
         self._raster_canvas.draw()
