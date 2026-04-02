@@ -94,6 +94,7 @@ class Sensor:
         self.firmware_version: str = ""  # set on connect, cleared on disconnect
         self._serial_lock = threading.RLock()  # serialise all serial I/O; RLock allows re-entry from same thread
         self._calibration_cache: dict | None = None  # populated on connect and by readCalibration()
+        self._last_eeprom_confirmation_bit: bool | None = None
 
         self._running = True
         self._timer = None
@@ -484,15 +485,31 @@ class Sensor:
             ser.write(bytes(payload))
             ser.flush()
 
-            # Step 3: wait for 's\r' done response from SetEEPROM
+            # Step 3: wait for 's\r' done response from SetEEPROM (+ optional confirmation bit byte)
             resp = b''
             deadline = time.monotonic() + 5.0
             while b'\r' not in resp and time.monotonic() < deadline:
                 chunk = ser.read(ser.in_waiting or 1)
                 if chunk:
                     resp += chunk
-            if b's' not in resp:
-                print(f"Warning: no 's\\r' completion from firmware after 'a' command, got: {resp!r}")
+            token = resp.split(b'\r', 1)[0]
+            if b's' not in token:
+                raise RuntimeError(
+                    f"No 's\\r' completion from firmware after 'a' command, got: {resp!r}"
+                )
+
+            # Some firmware variants append a status byte after 's'.
+            # If present, bit0 is treated as EEPROM-write confirmation bit.
+            s_idx = token.find(b's')
+            confirmation_bit: bool | None = None
+            if s_idx != -1 and len(token) > s_idx + 1:
+                status = token[s_idx + 1]
+                confirmation_bit = bool(status & 0x01)
+                if not confirmation_bit:
+                    raise RuntimeError(
+                        f"EEPROM write not confirmed (confirmation bit=0), status=0x{status:02x}, resp={resp!r}"
+                    )
+            self._last_eeprom_confirmation_bit = confirmation_bit
 
         # Update in-memory cache to reflect what was just written to EEPROM.
         # Use .copy() so later mutations to the caller's array cannot corrupt the cache.
