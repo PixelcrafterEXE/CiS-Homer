@@ -288,6 +288,7 @@ class CalibrationMixin:
         if hasattr(self, "_cal_raster"):
             self._cal_raster.update_data(self._cal_data, baseline=self._cal_saved_data)
         self._show_success("Calibration written to EEPROM.")
+        self._update_raster_calibration_date()
 
     def _load_calibration_from_sensor(self, show_popup: bool = False) -> None:
         """Read calibration EEPROM and populate _cal_data + setpoint labels."""
@@ -371,7 +372,25 @@ class CalibrationMixin:
         if hasattr(self, "_cal_sp2_label"):
             self._cal_sp2_label.configure(text="0")
         self._refresh_cal_raster()
-
+    def _update_raster_calibration_date(self) -> None:
+        """Update the calibration date displayed in RasterFigure after a successful save."""
+        if not hasattr(self, "_raster_fig") or self._raster_fig is None:
+            return
+        try:
+            if self._sensor_active() and hasattr(self._sensor, '_calibration_cache'):
+                cal_cache = self._sensor._calibration_cache
+                if cal_cache:
+                    day = cal_cache.get("day")
+                    month = cal_cache.get("month")
+                    year = cal_cache.get("year")
+                    if year is not None:
+                        if year < 100:
+                            year += 2000
+                        if day and month:
+                            cal_date = f"Cal: {day:02d}.{month:02d}.{year:04d}"
+                            self._raster_fig.set_calibration_date(cal_date)
+        except Exception:
+            pass
     # ─────────────────────────────────────────────────────────────────────────
     #  WIZARD SCAFFOLDING
     # ─────────────────────────────────────────────────────────────────────────

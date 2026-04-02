@@ -28,6 +28,7 @@ class RasterFigure(Figure):
         manualHi: float | None = None,
         onManualRangeChange=None,
         firmware_version: str | None = None,
+        calibration_date: str | None = None,
         *args,
         **kwargs,
     ):
@@ -35,6 +36,7 @@ class RasterFigure(Figure):
         super().__init__(*args, **kwargs)
         
         self._firmware_version = firmware_version or ""
+        self._calibration_date = calibration_date or ""
         self.rangeMode = (rangeMode or ("auto" if autoRange else "manual")).lower()
         if self.rangeMode not in ("auto", "manual", "max"):
             self.rangeMode = "manual"
@@ -340,9 +342,23 @@ class RasterFigure(Figure):
             f"Homogeneity: {homo_text}"
         )
         stats_text += f"\n{format_unmapped_lines(unmapped)}"
+        if self._calibration_date:
+            stats_text += f"\n{self._calibration_date}"
         if self._firmware_version:
             stats_text += f"\nFW {self._firmware_version}"
         self._stats_text.set_text(stats_text)
+
+    def set_calibration_date(self, date_str: str) -> None:
+        """Update the calibration date shown in stats text."""
+        self._calibration_date = date_str or ""
+        if self._stats_text is not None:
+            current = self._stats_text.get_text()
+            lines = [l for l in current.splitlines() if not l.startswith("Cal:") and not l.startswith("FW ")]
+            if self._calibration_date:
+                lines.append(self._calibration_date)
+            if self._firmware_version:
+                lines.append(f"FW {self._firmware_version}")
+            self._stats_text.set_text("\n".join(lines))
 
     def set_firmware_version(self, version: str) -> None:
         """Update the firmware version shown in the stats text box."""

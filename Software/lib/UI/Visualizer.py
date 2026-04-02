@@ -174,6 +174,22 @@ class VisualizerMixin:
         over_color = scheme.get("over", 'white') if use_clip else color_list[-1]
 
         fw_version = self._sensor.firmware_version if self._sensor else ""
+        
+        # Extract calibration date from sensor cache
+        cal_date = ""
+        if self._sensor:
+            try:
+                cal_cache = getattr(self._sensor, '_calibration_cache', None)
+                if cal_cache:
+                    day = cal_cache.get("day")
+                    month = cal_cache.get("month")
+                    year = cal_cache.get("year")
+                    if year is not None:
+                        if year < 100:
+                            year += 2000
+                        cal_date = f"Cal: {day:02d}.{month:02d}.{year:04d}" if day and month else ""
+            except Exception:
+                pass
 
         self._raster_fig = RasterFigure(
             np.full((9, 9), np.nan),
@@ -190,6 +206,7 @@ class VisualizerMixin:
             manualHi=getCFGKey("manual_range_hi"),
             onManualRangeChange=self._store_manual_range,
             firmware_version=fw_version,
+            calibration_date=cal_date,
         )
         self._raster_canvas = FigureCanvasTkAgg(self._raster_fig, master=self._plot_container)
         self._raster_canvas.draw()
