@@ -38,6 +38,11 @@ class CalibrationMixin:
         self._cal_streaming = False
         self._cal_fetching  = False
         
+        # Load calibration graph settings from config
+        from lib.Config import getCFGKey
+        self._cal_plot_window_s = getCFGKey("cal_plot_window_s", 10)  # Plot time window in seconds
+        self._cal_sample_interval_ms = getCFGKey("cal_sample_interval_ms", 150)  # Sample interval in ms
+        
         # Disable calibration tab if no sensor is connected
         sensor_active = sensor_active_fn() if callable(sensor_active_fn) else sensor_active_fn
         if not sensor_active:
@@ -504,9 +509,9 @@ class CalibrationMixin:
             setattr(self, all_attr, val)
             # Hide/show auto-measure based on calibrate-at-once state
             if val:
-                self._cal_opt_auto_measure.widget.pack_forget()
+                self._cal_opt_auto_measure.pack_forget()
             else:
-                self._cal_opt_auto_measure.widget.pack(fill="x", pady=4)
+                self._cal_opt_auto_measure.pack(fill="x", padx=8, pady=5)
             # Update button label
             self._wizard_nav_update_next_label(
                 f"Calibrate {title} at Once" if val else "Next"
@@ -533,7 +538,7 @@ class CalibrationMixin:
 
         # Hide auto-measure if calibrate-at-once is already on
         if getattr(self, all_attr):
-            self._cal_opt_auto_measure.widget.pack_forget()
+            self._cal_opt_auto_measure.pack_forget()
 
         def _next() -> None:
             if getattr(self, all_attr):
@@ -605,7 +610,7 @@ class CalibrationMixin:
         ax.set_yscale("log")
         ax.set_ylim(1, 65535)  # Start from 1 for log scale
         ax.tick_params(labelsize=7)
-        (self._cal_live_line,) = ax.plot([], [], color="#4ea6dc", lw=1.5, label="active diode")
+        (self._cal_live_line,) = ax.plot([], [], color="#4ea6dc", lw=1.5, label="active diode", drawstyle="steps-post")
         self._cal_live_peak_line = ax.axhline(
             y=float("nan"), color="#ff8844", lw=1.0, linestyle="--", label="peak since last change"
         )
@@ -708,7 +713,7 @@ class CalibrationMixin:
             self.after(0, self._update_cal_live_graph)
 
         threading.Thread(target=_fetch, daemon=True).start()
-        self.after(150, self._cal_live_stream_loop)
+        self.after(self._cal_sample_interval_ms, self._cal_live_stream_loop)
 
     def _update_cal_live_graph(self) -> None:
         if not self._cal_streaming:
@@ -738,8 +743,36 @@ class CalibrationMixin:
                 self._cal_diode_change_lines.append(line)
             self._cal_last_active_diode = self._cal_active_diode
         
-        self._cal_live_line.set_data(list(range(len(h))), h)
-        self._cal_live_ax.set_xlim(0, max(len(h) - 1, 1))
+        # Keep only the last N seconds of data (configurable window)
+        max_samples = int(self._cal_plot_window_s * 1000 / self._cal_sample_interval_ms)
+        if len(h) > max_samples:
+            h_display = h[-max_samples:]
+            offset = len(h) - max_samples
+        else:
+            h_display = h
+            offset = 0
+        
+        self._cal_live_line.set_data(list(range(len(h_display))), h_display)
+        self._cal_live_ax.set_xlim(0, max(len(h_display) - 1, 1))
+        
+        # Adjust diode change lines when data is cropped
+        if offset > 0 and hasattr(self, '_cal_diode_change_lines'):
+            lines_to_remove = []
+            for i, line in enumerate(self._cal_diode_change_lines):
+                original_idx = self._cal_diode_change_indices[i]
+                new_x = original_idx - offset
+                if new_x < 0:
+                    # Line scrolled out of view, mark for deletion
+                    lines_to_remove.append(i)
+                else:
+                    # Adjust line position
+                    line.set_xdata([new_x, new_x])
+            
+            # Delete lines that scrolled out of view (in reverse order to preserve indices)
+            for i in reversed(lines_to_remove):
+                self._cal_diode_change_lines[i].remove()
+                del self._cal_diode_change_lines[i]
+                del self._cal_diode_change_indices[i]
         
         # Calculate peak since last diode change (not overall peak)
         if not hasattr(self, '_cal_last_diode_change_idx'):
@@ -824,7 +857,3 @@ class CalibrationMixin:
                     if not np.isnan(low_val):
                         self._cal_data[r, c, 1] = low_val
         self._show_calibration_main()
-
-
-
-
