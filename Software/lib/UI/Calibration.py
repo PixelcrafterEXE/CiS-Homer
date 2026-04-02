@@ -122,10 +122,6 @@ class CalibrationMixin:
                   font=("TkDefaultFont", 10, "bold"))
         self._cal_count_label.grid(row=0, column=7, sticky="w")
 
-        self._cal_load_status = tkk.Label(sp_inner, text="", foreground="gray",
-                                          font=("TkDefaultFont", 8))
-        self._cal_load_status.grid(row=1, column=0, columnspan=8, sticky="w", pady=(2, 0))
-
         self._cal_raster = CalRaster(root, click_callback=self._show_edit_page)
         self._cal_raster.pack(fill="both", expand=True, padx=12, pady=4)
         if not hasattr(self, "_cal_saved_data"):
@@ -274,9 +270,6 @@ class CalibrationMixin:
         sp1 = getattr(self, "_cal_setpoint_1", 1000)
         sp2 = getattr(self, "_cal_setpoint_2", 1200)
 
-        if hasattr(self, "_cal_load_status"):
-            self._cal_load_status.configure(text="Saving to sensor…", foreground="gray")
-
         def _write() -> None:
             try:
                 self._sensor.writeCalibration(
@@ -286,11 +279,7 @@ class CalibrationMixin:
                 )
                 self.after(0, self._on_calibration_saved_success)
             except Exception as e:
-                self.after(0, lambda msg=str(e): (
-                    self._show_error(f"Save failed: {msg}"),
-                    self._cal_load_status.configure(text=f"Save failed: {msg}", foreground="red")
-                    if hasattr(self, "_cal_load_status") else None,
-                ))
+                self.after(0, lambda msg=str(e): self._show_error(f"Save failed: {msg}"))
 
         threading.Thread(target=_write, daemon=True).start()
 
@@ -298,16 +287,12 @@ class CalibrationMixin:
         self._cal_saved_data = self._cal_data.copy()
         if hasattr(self, "_cal_raster"):
             self._cal_raster.update_data(self._cal_data, baseline=self._cal_saved_data)
-        if hasattr(self, "_cal_load_status"):
-            self._cal_load_status.configure(text="Saved.", foreground="#44cc88")
         self._show_success("Calibration written to EEPROM.")
 
     def _load_calibration_from_sensor(self, show_popup: bool = False) -> None:
         """Read calibration EEPROM and populate _cal_data + setpoint labels."""
         if not self._sensor_active():
             return
-        if hasattr(self, "_cal_load_status"):
-            self._cal_load_status.configure(text="Loading from sensor…", foreground="gray")
 
         def _fetch() -> None:
             try:
@@ -343,12 +328,8 @@ class CalibrationMixin:
             self._cal_sp2_label.configure(text=str(sp2))
         if hasattr(self, "_cal_count_label") and counter is not None:
             self._cal_count_label.configure(text=str(int(counter)))
-        if hasattr(self, "_cal_load_status"):
-            self._cal_load_status.configure(text="Loaded from sensor.", foreground="#44cc88")
 
     def _on_cal_load_error(self, msg: str) -> None:
-        if hasattr(self, "_cal_load_status"):
-            self._cal_load_status.configure(text=f"Load failed: {msg}", foreground="red")
         self._show_error(f"Calibration load failed: {msg}")
 
     def _apply_calibration_from_cache(self) -> None:
@@ -374,8 +355,6 @@ class CalibrationMixin:
             int(cal["setpoint_2"]),
             int(cal.get("counter", 0)),
         )
-        if hasattr(self, "_cal_load_status"):
-            self._cal_load_status.configure(text="Loaded from cache.", foreground="gray")
 
     def _reset_calibration(self) -> None:
         # Reset channel data: low=0, high=500
@@ -391,8 +370,6 @@ class CalibrationMixin:
             self._cal_sp1_label.configure(text="1000")
         if hasattr(self, "_cal_sp2_label"):
             self._cal_sp2_label.configure(text="0")
-        if hasattr(self, "_cal_load_status"):
-            self._cal_load_status.configure(text="Reset to defaults.", foreground="gray")
         self._refresh_cal_raster()
 
     # ─────────────────────────────────────────────────────────────────────────
