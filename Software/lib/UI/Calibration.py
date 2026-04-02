@@ -35,7 +35,7 @@ class _CalRaster(tk.Canvas):
     """
     Square-cell 9x9 canvas raster for the calibration overview.
     Only cells present in _VALID_PIXELS are drawn.
-    Each cell shows the bright ADC value (top half) and dark ADC value (bottom half).
+    Each cell shows the high ADC value (top half) and low ADC value (bottom half).
     Clicking a valid cell invokes click_callback(row, col).
     """
     GRID = 9
@@ -79,16 +79,16 @@ class _CalRaster(tk.Canvas):
                 mid_y = (y0 + y1) // 2
                 self.create_line(x0, mid_y, x1, mid_y, fill="#555555", width=1)
 
-                bright = self._data[r, c, 0]
-                dark   = self._data[r, c, 1]
+                high = self._data[r, c, 0]
+                low  = self._data[r, c, 1]
 
-                b_text  = str(int(bright)) if not np.isnan(bright) else "-"
-                b_color = "#44cc88"        if not np.isnan(bright) else "#555555"
+                b_text  = str(int(high)) if not np.isnan(high) else "-"
+                b_color = "#44cc88"      if not np.isnan(high) else "#555555"
                 self.create_text((x0 + x1) // 2, (y0 + mid_y) // 2,
                                  text=b_text, fill=b_color, font=font)
 
-                d_text  = str(int(dark)) if not np.isnan(dark) else "-"
-                d_color = "#aa88ff"      if not np.isnan(dark) else "#555555"
+                d_text  = str(int(low)) if not np.isnan(low) else "-"
+                d_color = "#aa88ff"    if not np.isnan(low) else "#555555"
                 self.create_text((x0 + x1) // 2, (mid_y + y1) // 2,
                                  text=d_text, fill=d_color, font=font)
 
@@ -186,7 +186,7 @@ class CalibrationMixin:
         self._setup_calibration_tab(sensor_active_fn)
 
     def _setup_calibration_tab(self, sensor_active_fn) -> None:
-        # shape (9, 9, 2): axis-2 is [bright_adc, dark_adc]
+        # shape (9, 9, 2): axis-2 is [high_adc, low_adc]
         if not hasattr(self, "_cal_data"):
             self._cal_data = np.full((9, 9, 2), np.nan)
         self._cal_streaming = False
@@ -233,7 +233,7 @@ class CalibrationMixin:
 
         _INFO = (
             "Calibration maps each pixel's raw ADC count to a known irradiance using two reference "
-            "points: a bright measurement and a dark measurement.  "
+            "points: a high measurement and a low measurement.  "
             "Click any cell to edit its values manually, or use the Calibration Wizard."
         )
         tkk.Label(root, text=_INFO, wraplength=720, justify="left").pack(
@@ -246,7 +246,7 @@ class CalibrationMixin:
         sp_inner = tkk.Frame(sp_lf)
         sp_inner.pack(fill="x", padx=8, pady=6)
 
-        tkk.Label(sp_inner, text="Setpoint 1 (top, bright):").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        tkk.Label(sp_inner, text="Setpoint 1 (top, high):").grid(row=0, column=0, sticky="w", padx=(0, 6))
         self._cal_sp1_label = tkk.Label(
             sp_inner,
             text=str(getattr(self, "_cal_setpoint_1", "—")),
@@ -255,7 +255,7 @@ class CalibrationMixin:
         self._cal_sp1_label.grid(row=0, column=1, sticky="w")
         tkk.Label(sp_inner, text="µW/mm²").grid(row=0, column=2, sticky="w", padx=(3, 24))
 
-        tkk.Label(sp_inner, text="Setpoint 2 (bottom, dark):").grid(row=0, column=3, sticky="w", padx=(0, 6))
+        tkk.Label(sp_inner, text="Setpoint 2 (bottom, low):").grid(row=0, column=3, sticky="w", padx=(0, 6))
         self._cal_sp2_label = tkk.Label(
             sp_inner,
             text=str(getattr(self, "_cal_setpoint_2", "—")),
@@ -333,15 +333,15 @@ class CalibrationMixin:
         b_init = "" if np.isnan(self._cal_data[row, col, 0]) else str(int(self._cal_data[row, col, 0]))
         d_init = "" if np.isnan(self._cal_data[row, col, 1]) else str(int(self._cal_data[row, col, 1]))
 
-        self._edit_bright_opt = OptionEntry(
-            manual_lf, f"Bright reference  (setpoint: {tb_str} µW/mm²):",
+        self._edit_high_opt = OptionEntry(
+            manual_lf, f"High reference  (setpoint: {tb_str} µW/mm²):",
             initial=b_init, numeric=True)
-        self._edit_bright_opt.add_to(manual_lf)
+        self._edit_high_opt.add_to(manual_lf)
 
-        self._edit_dark_opt = OptionEntry(
-            manual_lf, f"Dark reference  (setpoint: {td_str} µW/mm²):",
+        self._edit_low_opt = OptionEntry(
+            manual_lf, f"Low reference  (setpoint: {td_str} µW/mm²):",
             initial=d_init, numeric=True)
-        self._edit_dark_opt.add_to(manual_lf)
+        self._edit_low_opt.add_to(manual_lf)
 
         # ── Live measurement ───────────────────────────────────────────────
         live_lf = tkk.LabelFrame(root, text=" Live Measurement ")
@@ -353,15 +353,15 @@ class CalibrationMixin:
 
         cap_bar = tkk.Frame(live_lf)
         cap_bar.pack(fill="x", pady=(4, 4))
-        OptionButton(cap_bar, text="Capture as Bright",
-                     command=lambda: self._cal_capture_edit("bright")).add_to(cap_bar)
-        OptionButton(cap_bar, text="Capture as Dark",
-                     command=lambda: self._cal_capture_edit("dark")).add_to(cap_bar)
+        OptionButton(cap_bar, text="Capture as High",
+                 command=lambda: self._cal_capture_edit("high")).add_to(cap_bar)
+        OptionButton(cap_bar, text="Capture as Low",
+                 command=lambda: self._cal_capture_edit("low")).add_to(cap_bar)
 
         # ── Navigation ─────────────────────────────────────────────────────
         def _apply() -> None:
-            self._cal_data[row, col, 0] = _parse_float(self._edit_bright_opt.value.get())
-            self._cal_data[row, col, 1] = _parse_float(self._edit_dark_opt.value.get())
+            self._cal_data[row, col, 0] = _parse_float(self._edit_high_opt.value.get())
+            self._cal_data[row, col, 1] = _parse_float(self._edit_low_opt.value.get())
             self._cal_streaming = False
             self._show_calibration_main()
 
@@ -391,9 +391,9 @@ class CalibrationMixin:
         if np.isnan(val):
             return
         row, col = self._cal_edit_row, self._cal_edit_col
-        idx = 0 if dataset == "bright" else 1
+        idx = 0 if dataset == "high" else 1
         self._cal_data[row, col, idx] = val
-        opt = self._edit_bright_opt if dataset == "bright" else self._edit_dark_opt
+        opt = self._edit_high_opt if dataset == "high" else self._edit_low_opt
         opt.value.set(str(int(val)))
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -516,12 +516,12 @@ class CalibrationMixin:
             self._cal_load_status.configure(text="Loaded from cache.", foreground="gray")
 
     def _reset_calibration(self) -> None:
-        # Reset channel data: dark=0, bright=500
+        # Reset channel data: low=0, high=500
         for r in range(9):
             for c in range(9):
                 if (r, c) in _VALID_PIXELS:
-                    self._cal_data[r, c, 0] = 500  # bright
-                    self._cal_data[r, c, 1] = 0    # dark
+                    self._cal_data[r, c, 0] = 500  # high
+                    self._cal_data[r, c, 1] = 0    # low
         # Reset setpoints to firmware defaults
         self._cal_setpoint_1 = 1000
         self._cal_setpoint_2 = 0
@@ -539,15 +539,15 @@ class CalibrationMixin:
 
     def _start_calibration_wizard(self) -> None:
         self._cal_auto_measure_val  = False
-        self._cal_dark_cover_val    = False
-        self._cal_target_dark_str   = str(getattr(self, "_cal_setpoint_2", 1200))
-        self._cal_target_bright_str = str(getattr(self, "_cal_setpoint_1", 1000))
-        self._cal_opt_target_bright = None
-        self._cal_opt_target_dark   = None
+        self._cal_low_cover_val     = False
+        self._cal_target_low_str    = str(getattr(self, "_cal_setpoint_2", 1200))
+        self._cal_target_high_str   = str(getattr(self, "_cal_setpoint_1", 1000))
+        self._cal_opt_target_high   = None
+        self._cal_opt_target_low    = None
         self._cal_opt_auto_measure  = None
-        self._cal_opt_dark_cover    = None
-        self._cal_bright_data    = np.full((9, 9), np.nan)
-        self._cal_dark_data      = np.full((9, 9), np.nan)
+        self._cal_opt_low_cover     = None
+        self._cal_high_data      = np.full((9, 9), np.nan)
+        self._cal_low_data       = np.full((9, 9), np.nan)
         self._cal_sensor_history = []
         self._cal_active_diode   = 0
         self._cal_streaming      = False
@@ -579,19 +579,19 @@ class CalibrationMixin:
             tk.Button(bar, text=next_label, command=next_cmd).pack(side="right", padx=4)
 
     # ─────────────────────────────────────────────────────────────────────────
-    #  PAGE 1 — Dark target + cover shortcut
+    #  PAGE 1 — Low target + cover shortcut
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_wizard_page1(self) -> None:
         root = self._frame_calibration
 
-        tkk.Label(root, text="Step 1 of 4  -  Dark Reference",
+        tkk.Label(root, text="Step 1 of 4  -  Low Reference",
                   font=("TkDefaultFont", 13, "bold")).pack(padx=12, pady=(14, 2))
         tkk.Label(
             root,
             text=(
-                "Set the reference value for the dark calibration point.  "
-                "Enable auto-measure to capture the brightest pixel automatically when its "
+                "Set the reference value for the low calibration point.  "
+                "Enable auto-measure to capture the highest pixel automatically when its "
                 "reading stabilises.  Alternatively, cover the entire sensor and use the "
                 "shortcut below to capture all pixels at once and skip page 2."
             ),
@@ -602,18 +602,18 @@ class CalibrationMixin:
         form.pack(fill="x", padx=12, pady=4)
         self._cal_page1_settings_frame = form  # stored so cover toggle can hide it
 
-        self._cal_opt_target_dark = OptionEntry(
-            form, "Target dark value  (µW/mm²):",
-            initial=self._cal_target_dark_str, numeric=True,
+        self._cal_opt_target_low = OptionEntry(
+            form, "Target low value  (µW/mm²):",
+            initial=self._cal_target_low_str, numeric=True,
             command=lambda v: (
-                setattr(self, "_cal_target_dark_str", v),
+                setattr(self, "_cal_target_low_str", v),
                 setattr(self, "_cal_setpoint_2", int(v) if v.strip().isdigit() else getattr(self, "_cal_setpoint_2", 1200)),
             ),
         )
-        self._cal_opt_target_dark.add_to(form)
+        self._cal_opt_target_low.add_to(form)
 
         self._cal_opt_auto_measure = OptionToggle(
-            form, "Auto-measure  (capture brightest pixel when stable)",
+            form, "Auto-measure  (capture highest pixel when stable)",
             initial=self._cal_auto_measure_val,
             command=lambda v: setattr(self, "_cal_auto_measure_val", v),
         )
@@ -624,7 +624,7 @@ class CalibrationMixin:
         self._cal_page1_cover_frame = cover_lf  # stored for pack ordering
 
         # If cover shortcut is already active when page is rendered, hide the settings form
-        if self._cal_dark_cover_val:
+        if self._cal_low_cover_val:
             form.pack_forget()
         tkk.Label(
             cover_lf,
@@ -636,21 +636,21 @@ class CalibrationMixin:
             wraplength=660, justify="left",
         ).pack(fill="x", padx=8, pady=(4, 2))
 
-        self._cal_opt_dark_cover = OptionToggle(
+        self._cal_opt_low_cover = OptionToggle(
             cover_lf, "Calibrate via full cover  (skip page 2):",
-            initial=self._cal_dark_cover_val,
-            command=lambda v: self._on_dark_cover_toggle(v),
+            initial=self._cal_low_cover_val,
+            command=lambda v: self._on_low_cover_toggle(v),
         )
-        self._cal_opt_dark_cover.add_to(cover_lf)
+        self._cal_opt_low_cover.add_to(cover_lf)
 
         def _next() -> None:
-            if self._cal_dark_cover_val:
-                self._cal_dark_all_pixels()
+            if self._cal_low_cover_val:
+                self._cal_low_all_pixels()
                 self._show_wizard_page(3)
             else:
                 self._show_wizard_page(2)
 
-        next_label = "Calibrate Dark" if self._cal_dark_cover_val else "Next"
+        next_label = "Calibrate Low" if self._cal_low_cover_val else "Next"
         
         # Create navigation bar and store reference to next button
         bar = tkk.Frame(root)
@@ -660,11 +660,11 @@ class CalibrationMixin:
         self._cal_page1_next_btn = tk.Button(bar, text=next_label, command=_next)
         self._cal_page1_next_btn.pack(side="right", padx=4)
 
-    def _on_dark_cover_toggle(self, enabled: bool) -> None:
+    def _on_low_cover_toggle(self, enabled: bool) -> None:
         """Update the next button text and hide/show settings when cover shortcut toggles."""
-        setattr(self, "_cal_dark_cover_val", enabled)
+        setattr(self, "_cal_low_cover_val", enabled)
         if hasattr(self, '_cal_page1_next_btn'):
-            self._cal_page1_next_btn.configure(text="Calibrate Dark" if enabled else "Next")
+            self._cal_page1_next_btn.configure(text="Calibrate Low" if enabled else "Next")
         if hasattr(self, '_cal_page1_settings_frame'):
             if enabled:
                 self._cal_page1_settings_frame.pack_forget()
@@ -676,19 +676,19 @@ class CalibrationMixin:
                 )
 
     # ─────────────────────────────────────────────────────────────────────────
-    #  PAGE 2 — Dark measurement
+    #  PAGE 2 — Low measurement
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_wizard_page2(self) -> None:
         root = self._frame_calibration
 
-        tkk.Label(root, text="Step 2 of 4  -  Dark Measurement",
+        tkk.Label(root, text="Step 2 of 4  -  Low Measurement",
                   font=("TkDefaultFont", 13, "bold")).pack(padx=12, pady=(14, 2))
         tkk.Label(
             root,
             text=(
-                "Live ADC reading of the currently brightest diode is plotted below.  "
-                "Position your dark source or attenuated light over each pixel in turn and capture it."
+                "Live ADC reading of the currently highest diode is plotted below.  "
+                "Position your low source or attenuated light over each pixel in turn and capture it."
             ),
             wraplength=700, justify="left",
         ).pack(padx=12, pady=(0, 4))
@@ -702,11 +702,11 @@ class CalibrationMixin:
         prog_lf.pack(fill="x", padx=12, pady=4)
         self._cal_prog_lf_widget = _ProgressRaster(prog_lf, height=120)
         self._cal_prog_lf_widget.pack(fill="x")
-        self._cal_prog_lf_widget.update_data(self._cal_dark_data, active_diode=getattr(self, '_cal_active_diode', None))
+        self._cal_prog_lf_widget.update_data(self._cal_low_data, active_diode=getattr(self, '_cal_active_diode', None))
 
         if not self._cal_auto_measure_val:
             OptionButton(root, text="Calibrate Pixel",
-                         command=lambda: self._cal_capture_pixel("dark")).add_to(root)
+                         command=lambda: self._cal_capture_pixel("low")).add_to(root)
 
         self._wizard_nav(root,
                          back_cmd=lambda: self._show_wizard_page(1),
@@ -717,19 +717,19 @@ class CalibrationMixin:
         self._cal_live_stream_loop()
 
     # ─────────────────────────────────────────────────────────────────────────
-    #  PAGE 3 — Bright target
+    #  PAGE 3 — High target
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_wizard_page3(self) -> None:
         root = self._frame_calibration
 
-        tkk.Label(root, text="Step 3 of 4  -  Bright Reference",
+        tkk.Label(root, text="Step 3 of 4  -  High Reference",
                   font=("TkDefaultFont", 13, "bold")).pack(padx=12, pady=(14, 2))
         tkk.Label(
             root,
             text=(
-                "Set the reference irradiance for the bright calibration point and position your "
-                "light source over the sensor.  Enable auto-measure to capture the brightest "
+                "Set the reference irradiance for the high calibration point and position your "
+                "light source over the sensor.  Enable auto-measure to capture the highest "
                 "pixel automatically when its reading stabilises."
             ),
             wraplength=700, justify="left",
@@ -738,18 +738,18 @@ class CalibrationMixin:
         form = tkk.LabelFrame(root, text=" Settings ")
         form.pack(fill="x", padx=12, pady=4)
 
-        self._cal_opt_target_bright = OptionEntry(
-            form, "Target brightness  (µW/mm²):",
-            initial=self._cal_target_bright_str, numeric=True,
+        self._cal_opt_target_high = OptionEntry(
+            form, "Target high value  (µW/mm²):",
+            initial=self._cal_target_high_str, numeric=True,
             command=lambda v: (
-                setattr(self, "_cal_target_bright_str", v),
+                setattr(self, "_cal_target_high_str", v),
                 setattr(self, "_cal_setpoint_1", int(v) if v.strip().isdigit() else getattr(self, "_cal_setpoint_1", 1000)),
             ),
         )
-        self._cal_opt_target_bright.add_to(form)
+        self._cal_opt_target_high.add_to(form)
 
         self._cal_opt_auto_measure = OptionToggle(
-            form, "Auto-measure  (capture brightest pixel when stable)",
+            form, "Auto-measure  (capture highest pixel when stable)",
             initial=self._cal_auto_measure_val,
             command=lambda v: setattr(self, "_cal_auto_measure_val", v),
         )
@@ -757,7 +757,7 @@ class CalibrationMixin:
 
         def _back() -> None:
             # skip page 2 if cover shortcut was used
-            if self._cal_dark_cover_val:
+            if self._cal_low_cover_val:
                 self._show_wizard_page(1)
             else:
                 self._show_wizard_page(2)
@@ -766,18 +766,18 @@ class CalibrationMixin:
                          next_cmd=lambda: self._show_wizard_page(4))
 
     # ─────────────────────────────────────────────────────────────────────────
-    #  PAGE 4 — Bright measurement
+    #  PAGE 4 — High measurement
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_wizard_page4(self) -> None:
         root = self._frame_calibration
 
-        tkk.Label(root, text="Step 4 of 4  -  Bright Measurement",
+        tkk.Label(root, text="Step 4 of 4  -  High Measurement",
                   font=("TkDefaultFont", 13, "bold")).pack(padx=12, pady=(14, 2))
         tkk.Label(
             root,
             text=(
-                "Live ADC reading of the currently brightest diode is plotted below.  "
+                "Live ADC reading of the currently highest diode is plotted below.  "
                 "Move the light source over each pixel in turn and capture it."
             ),
             wraplength=700, justify="left",
@@ -792,11 +792,11 @@ class CalibrationMixin:
         prog_lf.pack(fill="x", padx=12, pady=4)
         self._cal_prog_lf_widget = _ProgressRaster(prog_lf, height=120)
         self._cal_prog_lf_widget.pack(fill="x")
-        self._cal_prog_lf_widget.update_data(self._cal_bright_data, active_diode=getattr(self, '_cal_active_diode', None))
+        self._cal_prog_lf_widget.update_data(self._cal_high_data, active_diode=getattr(self, '_cal_active_diode', None))
 
         if not self._cal_auto_measure_val:
             OptionButton(root, text="Calibrate Pixel",
-                         command=lambda: self._cal_capture_pixel("bright")).add_to(root)
+                         command=lambda: self._cal_capture_pixel("high")).add_to(root)
 
         self._wizard_nav(root,
                          back_cmd=lambda: self._show_wizard_page(3),
@@ -886,7 +886,7 @@ class CalibrationMixin:
                             val = float("nan")
                             self._cal_active_diode = 0
                     else:
-                        # In wizard mode, track the brightest diode
+                        # In wizard mode, track the highest diode
                         active = int(valid_idx[int(np.argmax([raw[i] for i in valid_idx]))])
                         val = float(raw[active])
                         self._cal_active_diode = active
@@ -908,7 +908,7 @@ class CalibrationMixin:
             ):
                 recent = self._cal_sensor_history[-6:]
                 if np.std(recent) < 800 and np.mean(recent) > 300:
-                    ds = "dark" if page == 2 else "bright"
+                    ds = "low" if page == 2 else "high"
                     self.after(0, lambda d=ds: self._cal_capture_pixel(d))
 
             self.after(0, self._update_cal_live_graph)
@@ -959,9 +959,9 @@ class CalibrationMixin:
         if hasattr(self, '_cal_prog_lf_widget') and self._cal_prog_lf_widget is not None:
             page = getattr(self, "_cal_wizard_page", None)
             if page == 2:
-                self._cal_prog_lf_widget.update_data(self._cal_dark_data, active_diode=getattr(self, '_cal_active_diode', None))
+                self._cal_prog_lf_widget.update_data(self._cal_low_data, active_diode=getattr(self, '_cal_active_diode', None))
             elif page == 4:
-                self._cal_prog_lf_widget.update_data(self._cal_bright_data, active_diode=getattr(self, '_cal_active_diode', None))
+                self._cal_prog_lf_widget.update_data(self._cal_high_data, active_diode=getattr(self, '_cal_active_diode', None))
         
         try:
             self._cal_graph_canvas.draw_idle()
@@ -985,17 +985,17 @@ class CalibrationMixin:
             px, py = _SENSOR_POSITIONS[idx]
             row, col = py + 4, px + 4
             if 0 <= row < 9 and 0 <= col < 9:
-                if dataset == "dark":
-                    self._cal_dark_data[row, col] = val
+                if dataset == "low":
+                    self._cal_low_data[row, col] = val
                 else:
-                    self._cal_bright_data[row, col] = val
+                    self._cal_high_data[row, col] = val
                 w = self._cal_prog_lf_widget
                 if w is not None:
-                    data = self._cal_dark_data if dataset == "dark" else self._cal_bright_data
+                    data = self._cal_low_data if dataset == "low" else self._cal_high_data
                     w.update_data(data, active_diode=self._cal_active_diode)
 
-    def _cal_dark_all_pixels(self) -> None:
-        """Capture a single raw frame and store every channel as its dark reference."""
+    def _cal_low_all_pixels(self) -> None:
+        """Capture a single raw frame and store every channel as its low reference."""
         if not self._sensor_active():
             return
         try:
@@ -1006,9 +1006,9 @@ class CalibrationMixin:
                 px, py = pos
                 r, c = py + 4, px + 4
                 if 0 <= r < 9 and 0 <= c < 9:
-                    self._cal_dark_data[r, c] = float(raw[idx])
+                    self._cal_low_data[r, c] = float(raw[idx])
         except Exception as e:
-            print(f"[CalibrationMixin] Dark-cover capture error: {e}")
+            print(f"[CalibrationMixin] Low-cover capture error: {e}")
 
     # ─────────────────────────────────────────────────────────────────────────
     #  FINISH
@@ -1018,8 +1018,8 @@ class CalibrationMixin:
         self._cal_streaming = False
         for r in range(9):
             for c in range(9):
-                b = self._cal_bright_data[r, c]
-                d = self._cal_dark_data[r, c]
+                b = self._cal_high_data[r, c]
+                d = self._cal_low_data[r, c]
                 if not np.isnan(b):
                     self._cal_data[r, c, 0] = b
                 if not np.isnan(d):

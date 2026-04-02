@@ -270,38 +270,38 @@ class Sensor:
         '''Irradiance in µW/mm² for each sensor channel, linearly interpolated from EEPROM calibration.
 
         Maps each channel's raw ADC reading to irradiance (µW/mm²) using the per-channel
-        bright and dark ADC reference points and the two global setpoints:
-          setpoint_1 = bright reference irradiance (µW/mm²)
-          setpoint_2 = dark reference irradiance (µW/mm²)
+                high and low ADC reference points and the two global setpoints:
+                    setpoint_1 = high reference irradiance (µW/mm²)
+                    setpoint_2 = low reference irradiance (µW/mm²)
 
         Formula per channel:
-          t         = (raw - dark_adc) / (bright_adc - dark_adc)
+                    t         = (raw - low_adc) / (high_adc - low_adc)
           irradiance = setpoint_2 + t * (setpoint_1 - setpoint_2)
 
         Channels without calibration data (NTC: 8, 33; Reference Diode: 52) retain their
         raw ADC value so that getMap's unmapped-channel handling continues to work correctly.
-        Pixels where bright_adc == dark_adc (no calibration stored) are set to NaN.
+        Pixels where high_adc == low_adc (no calibration stored) are set to NaN.
         '''
         raw = self.getRaw()          # shape (64,), dtype int32
         cal = self._calibration_cache
         if cal is None:
             cal = self.readCalibration()  # populates _calibration_cache as a side-effect
 
-        sp1 = float(cal["setpoint_1"])  # bright irradiance reference (µW/mm²)
-        sp2 = float(cal["setpoint_2"])  # dark  irradiance reference (µW/mm²)
+        sp1 = float(cal["setpoint_1"])  # high irradiance reference (µW/mm²)
+        sp2 = float(cal["setpoint_2"])  # low  irradiance reference (µW/mm²)
 
         # Default: keep raw value (covers NTC / reference-diode channels that are
         # not in valid_channel_indices; getMap needs int(raw[i]) for those).
         result = raw.astype(float)
 
         for ch_idx, sensor_idx in enumerate(valid_channel_indices):
-            bright_adc = float(cal["channel_values"][ch_idx, 0])
-            dark_adc   = float(cal["channel_values"][ch_idx, 1])
-            denom = bright_adc - dark_adc
+            high_adc = float(cal["channel_values"][ch_idx, 0])
+            low_adc  = float(cal["channel_values"][ch_idx, 1])
+            denom = high_adc - low_adc
             if denom == 0.0:
                 result[sensor_idx] = np.nan   # uncalibrated pixel
                 continue
-            t = (float(raw[sensor_idx]) - dark_adc) / denom
+            t = (float(raw[sensor_idx]) - low_adc) / denom
             result[sensor_idx] = sp2 + t * (sp1 - sp2)
 
         return result
@@ -328,8 +328,8 @@ class Sensor:
           counter, day, month, year, hour, minute, second,
           gain, setpoint_1, setpoint_2,
           channel_values – np.ndarray shape (61, 2), dtype uint16
-            [:, 0] = Kalibrierwert Kalibrierstärke 1 (hell)
-            [:, 1] = Kalibrierwert Kalibrierstärke 2 (dunkel)
+                        [:, 0] = Kalibrierwert Kalibrierstärke 1 (hoch)
+                        [:, 1] = Kalibrierwert Kalibrierstärke 2 (niedrig)
           Kanalreihenfolge entspricht valid_channel_indices (None-Einträge übersprungen).
         '''
         ser = self.ser
