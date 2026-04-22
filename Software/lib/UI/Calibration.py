@@ -84,7 +84,7 @@ class CalibrationMixin:
 
         _INFO = (
             "Calibration maps each pixel's raw ADC count to a known irradiance using two reference "
-            "points: a high measurement and a low measurement.  "
+            "points: a light (high) measurement and a dark (low) measurement.  "
             "Click any cell to edit its values manually, or use the Calibration Wizard."
         )
         tkk.Label(root, text=_INFO, wraplength=720, justify="left").pack(
@@ -97,7 +97,7 @@ class CalibrationMixin:
         sp_inner = tkk.Frame(sp_lf)
         sp_inner.pack(fill="x", padx=8, pady=6)
 
-        tkk.Label(sp_inner, text="Setpoint 1 (top, high):").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        tkk.Label(sp_inner, text="Setpoint 1 (light reference):").grid(row=0, column=0, sticky="w", padx=(0, 6))
         self._cal_sp1_label = tkk.Label(
             sp_inner,
             text=str(getattr(self, "_cal_setpoint_1", "—")),
@@ -106,7 +106,7 @@ class CalibrationMixin:
         self._cal_sp1_label.grid(row=0, column=1, sticky="w")
         tkk.Label(sp_inner, text="µW/mm²").grid(row=0, column=2, sticky="w", padx=(3, 24))
 
-        tkk.Label(sp_inner, text="Setpoint 2 (bottom, low):").grid(row=0, column=3, sticky="w", padx=(0, 6))
+        tkk.Label(sp_inner, text="Setpoint 2 (dark reference):").grid(row=0, column=3, sticky="w", padx=(0, 6))
         self._cal_sp2_label = tkk.Label(
             sp_inner,
             text=str(getattr(self, "_cal_setpoint_2", "—")),
@@ -149,9 +149,9 @@ class CalibrationMixin:
         wiz_bar.pack(fill="x", padx=12, pady=(0, 12))
         wiz_bar.columnconfigure(0, weight=1)
         wiz_bar.columnconfigure(1, weight=1)
-        tk.Button(wiz_bar, text="Calibrate Low",
+        tk.Button(wiz_bar, text="Dark Calibration",
               command=lambda: self._start_calibration_wizard("low")).grid(row=0, column=0, padx=4, sticky="ew")
-        tk.Button(wiz_bar, text="Calibrate High",
+        tk.Button(wiz_bar, text="Light Calibration",
               command=lambda: self._start_calibration_wizard("high")).grid(row=0, column=1, padx=4, sticky="ew")
 
     def _refresh_cal_raster(self) -> None:
@@ -189,12 +189,12 @@ class CalibrationMixin:
         d_init = "" if np.isnan(self._cal_data[row, col, 1]) else str(int(self._cal_data[row, col, 1]))
 
         self._edit_high_opt = OptionEntry(
-            manual_lf, f"High reference  (setpoint: {tb_str} µW/mm²):",
+            manual_lf, f"Light reference  (setpoint: {tb_str} µW/mm²):",
             initial=b_init, numeric=True)
         self._edit_high_opt.add_to(manual_lf)
 
         self._edit_low_opt = OptionEntry(
-            manual_lf, f"Low reference  (setpoint: {td_str} µW/mm²):",
+            manual_lf, f"Dark reference  (setpoint: {td_str} µW/mm²):",
             initial=d_init, numeric=True)
         self._edit_low_opt.add_to(manual_lf)
 
@@ -208,9 +208,9 @@ class CalibrationMixin:
 
         cap_bar = tkk.Frame(live_lf)
         cap_bar.pack(fill="x", pady=(4, 4))
-        OptionButton(cap_bar, text="Capture as High",
+        OptionButton(cap_bar, text="Capture as Light",
                  command=lambda: self._cal_capture_edit("high")).add_to(cap_bar)
-        OptionButton(cap_bar, text="Capture as Low",
+        OptionButton(cap_bar, text="Capture as Dark",
                  command=lambda: self._cal_capture_edit("low")).add_to(cap_bar)
 
         # ── Navigation ─────────────────────────────────────────────────────
@@ -467,10 +467,10 @@ class CalibrationMixin:
         root = self._frame_calibration
         is_low = dataset == "low"
 
-        title = "Low" if is_low else "High"
+        title = "Dark" if is_low else "Light"
         target_attr = "_cal_target_low_str" if is_low else "_cal_target_high_str"
         setpoint_attr = "_cal_setpoint_2" if is_low else "_cal_setpoint_1"
-        target_label = "Target low value  (µW/mm²):" if is_low else "Target high value  (µW/mm²):"
+        target_label = "Target dark value  (µW/mm²):" if is_low else "Target light value  (µW/mm²):"
         all_attr = "_cal_all_at_once_low_val" if is_low else "_cal_all_at_once_high_val"
         auto_attr = "_cal_auto_measure_low_val" if is_low else "_cal_auto_measure_high_val"
 
@@ -557,7 +557,7 @@ class CalibrationMixin:
     def _build_wizard_measure_page(self, dataset: str) -> None:
         root = self._frame_calibration
         is_low = dataset == "low"
-        title = "Low" if is_low else "High"
+        title = "Dark" if is_low else "Light"
         dataset_data = self._cal_low_data if is_low else self._cal_high_data
 
         tkk.Label(root, text=f"{title} Calibration - Measurement",
