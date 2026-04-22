@@ -110,7 +110,7 @@ class UI(tkk.Tk, VisualizerMixin, CalibrationMixin, SettingsMixin, KeyboardMixin
                 font=("TkDefaultFont", 11),
             )
             self._error_label.pack(expand=True)
-
+ 
         self._error_label.configure(text=message)
         # Place near the bottom-centre, above any nav chrome
         self._error_overlay.place(relx=0.5, rely=1.0, anchor="s", relwidth=0.95, y=-12)

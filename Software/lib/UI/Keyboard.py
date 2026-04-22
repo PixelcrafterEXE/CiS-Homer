@@ -64,6 +64,7 @@ class KeyboardMixin:
         self._kb_hide_timer: Optional[threading.Timer] = None
         self.bind_all("<FocusIn>",  self._kb_focus_in,  add="+")  # type: ignore[attr-defined]
         self.bind_all("<FocusOut>", self._kb_focus_out, add="+")  # type: ignore[attr-defined]
+        self.bind_all("<Button-1>", self._kb_button1,   add="+")  # type: ignore[attr-defined]
 
     def _kb_focus_in(self, event: tk.Event) -> None:  # type: ignore[type-arg]
         if not isinstance(event.widget, tk.Widget):
@@ -86,3 +87,13 @@ class KeyboardMixin:
             t.daemon = True
             t.start()
             self._kb_hide_timer = t
+
+    def _kb_button1(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+        if not isinstance(event.widget, tk.Widget):
+            return
+        if not _is_editable(event.widget):
+            # Clicked outside any editable widget – cancel pending show and hide immediately
+            if self._kb_hide_timer is not None:
+                self._kb_hide_timer.cancel()
+                self._kb_hide_timer = None
+            _dbus("Hide")

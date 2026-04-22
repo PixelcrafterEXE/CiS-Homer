@@ -1,6 +1,7 @@
 import numpy as np
 from matplotlib.figure import Figure
 import matplotlib.colors as mcolors
+import matplotlib.ticker as mticker
 from matplotlib.collections import LineCollection
 from matplotlib.patches import Circle
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox, TextArea, VPacker
@@ -28,6 +29,7 @@ class RasterFigure(Figure):
         manualHi: float | None = None,
         onManualRangeChange=None,
         firmware_version: str | None = None,
+        calibration_date: str | None = None,
         *args,
         **kwargs,
     ):
@@ -35,6 +37,7 @@ class RasterFigure(Figure):
         super().__init__(*args, **kwargs)
         
         self._firmware_version = firmware_version or ""
+        self._calibration_date = calibration_date or ""
         self.rangeMode = (rangeMode or ("auto" if autoRange else "manual")).lower()
         if self.rangeMode not in ("auto", "manual", "max"):
             self.rangeMode = "manual"
@@ -152,7 +155,19 @@ class RasterFigure(Figure):
             self._draw_orientation_hint()
         self._create_stats_text(data)
 
-        self.colorbar(self.im, cax=cax)
+        self._colorbar = self.colorbar(self.im, cax=cax)
+        if not logRange:
+            # Use compact "k" notation (e.g. 60k) so wide labels don't get
+            # clipped at the right edge on narrow displays like 720p.
+            # The formatter is stored as an attribute and reapplied in
+            # update_data because Matplotlib's colorbar update_normal callback
+            # resets tick formatters on every data/cmap change.
+            self._cb_compact_formatter = mticker.FuncFormatter(
+                lambda x, _: f"{int(x // 1000)}k" if x >= 1000 else str(int(x))
+            )
+            self._colorbar.ax.yaxis.set_major_formatter(self._cb_compact_formatter)
+        else:
+            self._cb_compact_formatter = None
 
         if self.showValues:
             self._create_value_texts(data)
@@ -340,9 +355,23 @@ class RasterFigure(Figure):
             f"Homogeneity: {homo_text}"
         )
         stats_text += f"\n{format_unmapped_lines(unmapped)}"
+        if self._calibration_date:
+            stats_text += f"\n{self._calibration_date}"
         if self._firmware_version:
             stats_text += f"\nFW {self._firmware_version}"
         self._stats_text.set_text(stats_text)
+
+    def set_calibration_date(self, date_str: str) -> None:
+        """Update the calibration date shown in stats text."""
+        self._calibration_date = date_str or ""
+        if self._stats_text is not None:
+            current = self._stats_text.get_text()
+            lines = [l for l in current.splitlines() if not l.startswith("Cal:") and not l.startswith("FW ")]
+            if self._calibration_date:
+                lines.append(self._calibration_date)
+            if self._firmware_version:
+                lines.append(f"FW {self._firmware_version}")
+            self._stats_text.set_text("\n".join(lines))
 
     def set_firmware_version(self, version: str) -> None:
         """Update the firmware version shown in the stats text box."""
@@ -427,6 +456,11 @@ class RasterFigure(Figure):
             lo = float(valid_vals.min()) if len(valid_vals) else (1.0 if self.logRange else 0.0)
             hi = float(valid_vals.max()) if len(valid_vals) else 65535.0
             self.im.set_cmap(self.make_cmap(lo, hi))
+
+        # Reapply the compact formatter – Matplotlib's colorbar update_normal
+        # callback resets tick formatters whenever the image data or cmap changes.
+        if getattr(self, '_cb_compact_formatter', None) is not None:
+            self._colorbar.ax.yaxis.set_major_formatter(self._cb_compact_formatter)
 
         self._update_stats_text(data_float, unmapped)
         self._update_value_texts(data_float)
