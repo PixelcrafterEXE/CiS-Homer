@@ -92,8 +92,8 @@ jobs:
         run: pyinstaller --noconfirm --workpath build/pyinstaller homer.spec
 
       - name: Rename executable
-        shell: pwsh
-        run: Rename-Item dist\homer.exe dist\homer-windows.exe
+        shell: bash
+        run: mv dist/homer.exe dist/homer-windows.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
