@@ -56,3 +56,56 @@ make build
 ```
 ### 4. Flash the Image to an SD Card
 Use a tool like [RPI-Imager](https://www.raspberrypi.com/software/) to flash the generated image to an SD card.
+
+### (5. SSH into the Pi via Crossover Cable)
+The HomerPi firmware assigns a static IP to its LAN port (`eth0`): **`192.168.10.10/24`**, gateway `192.168.10.1`.
+
+1. Connect an Ethernet cable directly between your PC and the Pi (crossover or straight — modern NICs auto-negotiate).
+2. Set your PC's Ethernet interface to a static address in the same subnet: `192.168.10.1/24`.
+3. SSH in:
+   ```bash
+   ssh homerpi@192.168.10.10
+   # password: homerpi
+   ```
+
+> On Linux you can configure the interface with: `sudo ip addr add 192.168.10.1/24 dev <iface> && sudo ip link set <iface> up`
+
+---
+
+## Standalone Executables
+
+Every release includes self-contained executables built with PyInstaller
+
+| File | Platform | Notes |
+| :--- | :--- | :--- |
+| `homer-linux-x86_64` | Linux x86-64 | `chmod +x homer-linux-x86_64 && ./homer-linux-x86_64` |
+| `homer-windows.exe` | Windows 10/11 x64 | Double-click or run from a terminal |
+| `homer.flatpak` | Linux (any distro) | install with flatpak install homer.flatpak |
+| `image_*-homerpi-homer.img.xz` | Raspberry Pi | Flash with RPI-Imager |
+
+### Building locally
+```bash
+make dist
+```
+The binary is written to `dist/homer` (or `dist/homer.exe` on Windows).
+
+### Feature matrix
+
+| Feature | HomerPi (RPi) | Linux desktop | Windows | Flatpak |
+| :--- | :---: | :---: | :---: | :---: |
+| Sensor readout (serial/USB) | ✓ | ✓ | ✓ | ✓ |
+| Calibration & visualisation | ✓ | ✓ | ✓ | ✓ |
+| USB CSV export | ✓ | ✓ | — | limited** |
+| System time sync from sensor | ✓ | ✓* | — | — |
+| On-screen keyboard | ✓ | ✓* | — | — |
+
+*-Requires `timedatectl` / `onboard` to be present on the host (standard on
+  the HomerPi firmware; most desktop distributions include both).
+
+
+**-The Flatpak sandbox calls `udisksctl` via D-Bus (`org.freedesktop.UDisks2`).
+  This works if the host system's udisks2 daemon is running and the Flatpak
+  finish-arg `--system-talk-name=org.freedesktop.UDisks2` is honoured.
+  Use the plain Linux binary for guaranteed USB export functionality.
+
+

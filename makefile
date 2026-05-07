@@ -4,10 +4,13 @@ ifeq ($(OS),Windows_NT) ### Windows
 SYS_PYTHON   := python
 PYTHON       := $(VENV_DIR)/Scripts/python.exe
 PIP          := $(VENV_DIR)/Scripts/pip.exe
+PYINSTALLER  := $(VENV_DIR)/Scripts/pyinstaller.exe
 RM_DIR       := rmdir /s /q
 VENV_PATH_CL := Software\venv
 BUILD_PATH_CL:= Firmware\build
 WORK_PATH_CL := Firmware\work
+DIST_PATH_CL := dist
+PIB_PATH_CL  := build\pyinstaller
 BUILD_CMD    := wsl bash -c "cd Firmware && sudo ./build-docker.sh"
 
 else ### Linux
@@ -15,10 +18,13 @@ else ### Linux
 SYS_PYTHON   := python3
 PYTHON       := $(VENV_DIR)/bin/python3
 PIP          := $(VENV_DIR)/bin/pip
+PYINSTALLER  := $(VENV_DIR)/bin/pyinstaller
 RM_DIR       := rm -rf
 VENV_PATH_CL := $(VENV_DIR)
 BUILD_PATH_CL:= Firmware/build
 WORK_PATH_CL := Firmware/work
+DIST_PATH_CL := dist
+PIB_PATH_CL  := build/pyinstaller
 
 UNAME_M := $(shell uname -m)
 ifneq (,$(filter $(UNAME_M),x86_64 amd64 i386 i686)) ### Linux X86
@@ -30,7 +36,7 @@ endif
 endif
 
 
-.PHONY: all run build clean help
+.PHONY: all run build dist clean help
 
 all: help
 
@@ -40,16 +46,25 @@ run: $(VENV_DIR)/.installed  ## Run the software locally (creates / updates venv
 build:  ## Build the Raspberry Pi OS firmware image
 	@$(BUILD_CMD)
 
-clean:  ## Remove the virtual environment
+dist: $(VENV_DIR)/.installed  ## Build standalone executable with PyInstaller
+	@echo "-> Installing PyInstaller ..."
+	@"$(PYTHON)" -m pip install --quiet pyinstaller
+	@echo "-> Building executable ..."
+	@"$(PYINSTALLER)" --noconfirm --workpath build/pyinstaller homer.spec
+
+clean:  ## Remove build output and the virtual environment
 	-$(RM_DIR) $(VENV_PATH_CL) 2> /dev/null || true
 	-$(RM_DIR) $(BUILD_PATH_CL) 2> /dev/null || true
 	-$(RM_DIR) $(WORK_PATH_CL) 2> /dev/null || true
+	-$(RM_DIR) $(DIST_PATH_CL) 2> /dev/null || true
+	-$(RM_DIR) $(PIB_PATH_CL) 2> /dev/null || true
 
 help:  ## Show this help message
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "  run    Run the software locally (manages venv automatically)"
 	@echo "  build  Build the Raspberry Pi OS firmware image"
+	@echo "  dist   Build a standalone one-file executable (PyInstaller)"
 	@echo "  clean  Remove build output and the virtual environment ($(VENV_DIR))"
 
 $(VENV_DIR)/.installed: Software/pyproject.toml
