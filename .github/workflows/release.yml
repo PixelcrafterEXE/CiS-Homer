@@ -68,10 +68,11 @@ jobs:
         # exit 124 = killed by timeout (app was alive) = pass
         # exit 0   = app exited cleanly               = pass
         # anything else = crash                        = fail
+        # Use || to capture the exit code without triggering set -e.
         run: |
           chmod +x dist/homer-linux-x86_64
-          xvfb-run --auto-servernum timeout 8 ./dist/homer-linux-x86_64
-          EXIT=$?
+          EXIT=0
+          xvfb-run --auto-servernum timeout 8 ./dist/homer-linux-x86_64 || EXIT=$?
           if [ $EXIT -ne 124 ] && [ $EXIT -ne 0 ]; then
             echo "Smoke test FAILED: binary exited with code $EXIT"
             exit 1
@@ -172,9 +173,9 @@ jobs:
       - name: Smoke-test Flatpak
         run: |
           flatpak install --user --noninteractive homer.flatpak
+          EXIT=0
           xvfb-run --auto-servernum timeout 8 \
-            flatpak run --user com.cis.Homer
-          EXIT=$?
+            flatpak run --user com.cis.Homer || EXIT=$?
           if [ $EXIT -ne 124 ] && [ $EXIT -ne 0 ]; then
             echo "Smoke test FAILED: Flatpak exited with code $EXIT"
             exit 1
