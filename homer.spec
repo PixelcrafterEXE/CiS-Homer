@@ -23,15 +23,29 @@ extra_datas = [
     *matplotlib_datas,
 ]
 
-# On Windows, PyInstaller's tkinter hook sometimes omits the Tcl msgcat
-# package from the bundle, causing a TclError on first ttkbootstrap init.
-# Explicitly include the full Tcl library directory to avoid this.
+# PyInstaller's tkinter hook sometimes omits the Tcl msgcat package,
+# causing a TclError on first ttkbootstrap init.  Explicitly bundle the
+# full Tcl library directory (contains msgcat, encoding tables, etc.).
+# tkinter.Tcl() is headless so this works in CI without a DISPLAY.
+import subprocess as _sp
+try:
+    _tcl_lib = _sp.check_output(
+        [sys.executable, "-c",
+         "import tkinter; r=tkinter.Tcl(); print(r.eval('info library'))"],
+        text=True, timeout=10, stderr=_sp.DEVNULL,
+    ).strip()
+    if _tcl_lib and Path(_tcl_lib).is_dir():
+        extra_datas.append((_tcl_lib, Path(_tcl_lib).name))
+except Exception:
+    pass
+
+# Windows also bundles Tcl inside the Python prefix; sweep the whole tcl/ dir.
 if sys.platform == "win32":
-    tcl_dir = Path(sys.base_prefix) / "tcl"
-    if tcl_dir.is_dir():
-        for entry in tcl_dir.iterdir():
-            if entry.is_dir():
-                extra_datas.append((str(entry), entry.name))
+    _tcl_dir = Path(sys.base_prefix) / "tcl"
+    if _tcl_dir.is_dir():
+        for _entry in _tcl_dir.iterdir():
+            if _entry.is_dir():
+                extra_datas.append((str(_entry), _entry.name))
 
 a = Analysis(
     [str(software_dir / "main.py")],
