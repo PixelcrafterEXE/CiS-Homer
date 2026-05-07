@@ -4,6 +4,8 @@
 # SPECPATH is set by PyInstaller to the directory containing this file
 # (the project root), so all paths below are relative to that.
 
+import os
+import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
@@ -15,15 +17,27 @@ block_cipher = None
 ttkbootstrap_datas, ttkbootstrap_bins, ttkbootstrap_hidden = collect_all("ttkbootstrap")
 matplotlib_datas,   matplotlib_bins,   matplotlib_hidden   = collect_all("matplotlib")
 
+extra_datas = [
+    (str(software_dir / "res"), "res"),
+    *ttkbootstrap_datas,
+    *matplotlib_datas,
+]
+
+# On Windows, PyInstaller's tkinter hook sometimes omits the Tcl msgcat
+# package from the bundle, causing a TclError on first ttkbootstrap init.
+# Explicitly include the full Tcl library directory to avoid this.
+if sys.platform == "win32":
+    tcl_dir = Path(sys.base_prefix) / "tcl"
+    if tcl_dir.is_dir():
+        for entry in tcl_dir.iterdir():
+            if entry.is_dir():
+                extra_datas.append((str(entry), entry.name))
+
 a = Analysis(
     [str(software_dir / "main.py")],
     pathex=[str(software_dir)],
     binaries=ttkbootstrap_bins + matplotlib_bins,
-    datas=[
-        (str(software_dir / "res"), "res"),
-        *ttkbootstrap_datas,
-        *matplotlib_datas,
-    ],
+    datas=extra_datas,
     hiddenimports=[
         "serial.tools.list_ports",
         "PIL._tkinter_finder",
