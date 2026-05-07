@@ -57,6 +57,19 @@ make build
 ### 4. Flash the Image to an SD Card
 Use a tool like [RPI-Imager](https://www.raspberrypi.com/software/) to flash the generated image to an SD card.
 
+### (5. SSH into the Pi via Crossover Cable)
+The HomerPi firmware assigns a static IP to its LAN port (`eth0`): **`192.168.10.10/24`**, gateway `192.168.10.1`.
+
+1. Connect an Ethernet cable directly between your PC and the Pi (crossover or straight — modern NICs auto-negotiate).
+2. Set your PC's Ethernet interface to a static address in the same subnet: `192.168.10.1/24`.
+3. SSH in:
+   ```bash
+   ssh homerpi@192.168.10.10
+   # password: homerpi
+   ```
+
+> On Linux you can configure the interface with: `sudo ip addr add 192.168.10.1/24 dev <iface> && sudo ip link set <iface> up`
+
 ---
 
 ## Standalone Executables
