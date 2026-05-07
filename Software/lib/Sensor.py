@@ -1,5 +1,6 @@
 
 import datetime
+import sys
 import serial
 from serial.tools import list_ports
 import re
@@ -563,14 +564,19 @@ class Sensor:
             year += 2000
         dt = datetime.datetime(year, cal["month"], cal["day"],
                                cal["hour"], cal["minute"], cal["second"])
-        # timedatectl set-time goes through polkit (see Firmware/stage-homer
-        # 01-setup-homer/01-run.sh rule 10-timedate.rules) — no sudo needed.
-        # NTP must be disabled before allowing a manual time set.
-        subprocess.run(["timedatectl", "set-ntp", "false"], check=True)
-        subprocess.run(
-            ["timedatectl", "set-time", dt.strftime("%Y-%m-%d %H:%M:%S")],
-            check=True,
-        )
+        # timedatectl is Linux/systemd-only. On the target HomerPi firmware the
+        # polkit rule (stage-homer/01-setup-homer/01-run.sh, 10-timedate.rules)
+        # allows this without sudo. On Windows or non-systemd Linux it is
+        # unavailable and the time-sync step is silently skipped.
+        if sys.platform == "linux":
+            try:
+                subprocess.run(["timedatectl", "set-ntp", "false"], check=True)
+                subprocess.run(
+                    ["timedatectl", "set-time", dt.strftime("%Y-%m-%d %H:%M:%S")],
+                    check=True,
+                )
+            except FileNotFoundError:
+                pass  # timedatectl not present (e.g. Flatpak sandbox, non-systemd)
         return dt
 
     def setTime(self, day: int, month: int, year: int,

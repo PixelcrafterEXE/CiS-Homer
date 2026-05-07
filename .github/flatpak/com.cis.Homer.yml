@@ -1,0 +1,39 @@
+app-id: com.cis.Homer
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+command: homer
+
+finish-args:
+  # GUI access
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  # Serial port / USB sensor access (FTDI device 0403:6015)
+  - --device=all
+  # USB export: udisksctl mounts drives under /run/media and /media
+  - --filesystem=/run/media
+  - --filesystem=/media
+  - --filesystem=home
+  # Allow talking to udisks2 over D-Bus for mount/unmount
+  - --system-talk-name=org.freedesktop.UDisks2
+
+modules:
+  - name: homer
+    buildsystem: simple
+    build-commands:
+      # Install the PyInstaller one-file binary
+      - install -Dm755 homer /app/bin/homer-bin
+      # Wrapper script: set TMPDIR so PyInstaller can extract its bundle
+      # inside the Flatpak sandbox (XDG_RUNTIME_DIR is always writable).
+      - install -Dm755 homer-wrapper.sh /app/bin/homer
+    sources:
+      # The CI workflow copies the Linux x86_64 binary here before building.
+      - type: file
+        path: homer-linux-x86_64
+        dest-filename: homer
+      - type: script
+        dest-filename: homer-wrapper.sh
+        commands:
+          - export TMPDIR="${XDG_RUNTIME_DIR:-/tmp}"
+          - exec /app/bin/homer-bin "$@"
