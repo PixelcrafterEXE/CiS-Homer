@@ -49,8 +49,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install system tkinter
-        run: sudo apt-get install -y python3-tk
+      - name: Install system dependencies
+        run: sudo apt-get install -y python3-tk xvfb
 
       - name: Install Python dependencies
         run: |
@@ -62,6 +62,21 @@ jobs:
 
       - name: Rename binary
         run: mv dist/homer dist/homer-linux-x86_64
+
+      - name: Smoke-test Linux binary
+        # Run the app on a virtual display for 8 seconds.
+        # exit 124 = killed by timeout (app was alive) = pass
+        # exit 0   = app exited cleanly               = pass
+        # anything else = crash                        = fail
+        run: |
+          chmod +x dist/homer-linux-x86_64
+          xvfb-run --auto-servernum timeout 8 ./dist/homer-linux-x86_64
+          EXIT=$?
+          if [ $EXIT -ne 124 ] && [ $EXIT -ne 0 ]; then
+            echo "Smoke test FAILED: binary exited with code $EXIT"
+            exit 1
+          fi
+          echo "Smoke test passed (exit $EXIT)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -95,6 +110,20 @@ jobs:
         shell: bash
         run: mv dist/homer.exe dist/homer-windows.exe
 
+      - name: Smoke-test Windows exe
+        # Start the exe, wait 8 seconds, then check if it is still running.
+        # If it exited early with a non-zero code it crashed = fail.
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath "dist\homer-windows.exe" -PassThru
+          Start-Sleep -Seconds 8
+          if ($proc.HasExited -and $proc.ExitCode -ne 0) {
+            Write-Error "Smoke test FAILED: exe exited with code $($proc.ExitCode)"
+            exit 1
+          }
+          if (-not $proc.HasExited) { $proc.Kill() }
+          Write-Host "Smoke test passed"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -127,7 +156,7 @@ jobs:
 
       - name: Install Flatpak tooling and runtimes
         run: |
-          sudo apt-get install -y flatpak flatpak-builder
+          sudo apt-get install -y flatpak flatpak-builder xvfb
           flatpak remote-add --user --if-not-exists flathub \
             https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user --noninteractive flathub \
@@ -139,6 +168,18 @@ jobs:
           flatpak-builder --user --repo=flatpak-repo --force-clean \
             flatpak-build .github/flatpak/com.cis.Homer.yml
           flatpak build-bundle flatpak-repo homer.flatpak com.cis.Homer
+
+      - name: Smoke-test Flatpak
+        run: |
+          flatpak install --user --noninteractive homer.flatpak
+          xvfb-run --auto-servernum timeout 8 \
+            flatpak run --user com.cis.Homer
+          EXIT=$?
+          if [ $EXIT -ne 124 ] && [ $EXIT -ne 0 ]; then
+            echo "Smoke test FAILED: Flatpak exited with code $EXIT"
+            exit 1
+          fi
+          echo "Smoke test passed (exit $EXIT)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
